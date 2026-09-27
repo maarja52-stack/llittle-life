@@ -1,5 +1,7 @@
 const STORE_KEY = "little-life-integrated-v1";
 const LEGACY_SHOP_KEY = "sunday-market-shopping-v1";
+const SYNC_ENDPOINT = "https://script.google.com/macros/s/AKfycby0AGZFmdmfwj7YMRCc4iix0bnvFmJaEoinlRAeoAPZZSVr7jP1g0Q28oTXBIOotrUbNw/exec";
+const SYNC_SETTINGS_KEY = "little-life-sheets-backup-v1";
 const CATEGORIES = ["Fresh fruit and vegetables", "Meat, fish and eggs", "Dairy and chilled", "Bakery and wraps", "Dry goods, grains and pasta", "Tinned, jarred and sauces", "Frozen", "Herbs, spices and cooking basics", "Optional and substitutions", "From the freezer / already have"];
 const DAILY = {
   morning: [{id:"water",name:"Drink a glass of water",detail:"Your body has been running on vibes long enough."},{id:"teeth",name:"Brush your teeth",detail:"Come on. We both know you’re not negotiating this one."},{id:"moisturiser",name:"Hyaluronic acid + moisturiser",detail:"Two minutes. Do it now and thank yourself later."}],
@@ -56,6 +58,7 @@ const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
 const blankState = () => ({version:1,progress:{},home:{startDate:"",completed:{}},food:{week:1,day:new Date().getDay()===0?6:new Date().getDay()-1,activeMenuPlanId:"original",menuPlans:[],cooked:{},favorites:[],notes:{},freezer:{}},shopping:{items:[]}});
 let state = loadState();
+let syncSettings = loadSyncSettings();
 let selectedView = "daily";
 let shownMonth = new Date(new Date().getFullYear(),new Date().getMonth(),1);
 let selectedCalendarDate = todayKey();
@@ -66,6 +69,8 @@ let toastTimer;
 let timerInterval;
 let timerSeconds = 0;
 let timerPaused = false;
+let syncTimer;
+let lastBackupSnapshot = "";
 
 function loadState(){
   try {
@@ -80,13 +85,27 @@ function loadState(){
   if(!fresh.shopping.items.length) fresh.shopping.items=buildShoppingItems(1,"original",MEALS[0]);
   return fresh;
 }
+function loadSyncSettings(){try{const saved=JSON.parse(localStorage.getItem(SYNC_SETTINGS_KEY));return {enabled:Boolean(saved?.enabled),sheet:String(saved?.sheet||"Little Life"),confirmed:Boolean(saved?.confirmed)};}catch(error){return {enabled:false,sheet:"Little Life",confirmed:false};}}
+function saveSyncSettings(){try{localStorage.setItem(SYNC_SETTINGS_KEY,JSON.stringify(syncSettings));}catch(error){notify("Could not save Google Sheets settings on this device.");}}
+function updateSyncStatus(message){const header=$("#syncHeaderStatus"),dialog=$("#syncDialogStatus");if(header)header.textContent=message?(message.includes("queued")?"Queued":message.includes("Sending")?"Sending":message.includes("sent")?"Sent":message.includes("Could not")?"Error":"Local only"):(syncSettings.enabled?"Backup on":"Local only");if(dialog&&message)dialog.textContent=message;}
+function queueCloudBackup(){if(!syncSettings.enabled||!syncSettings.confirmed)return;clearTimeout(syncTimer);updateSyncStatus("Backup queued");syncTimer=setTimeout(()=>sendCloudBackup(false),1200);}
+async function sendCloudBackup(force){
+  if(!syncSettings.confirmed||(!syncSettings.enabled&&!force)){updateSyncStatus("Confirm the endpoint and enable backups first.");return;}
+  const sheet=syncSettings.sheet.trim();if(!sheet){updateSyncStatus("Enter the spreadsheet tab name first.");$("#syncSheetName").focus();return;}
+  const snapshot=JSON.stringify(state);if(snapshot===lastBackupSnapshot){updateSyncStatus("This snapshot is already backed up.");return;}
+  updateSyncStatus("Sending backup…");
+  try{
+    await fetch(SYNC_ENDPOINT,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=UTF-8"},body:JSON.stringify({sheet,row:[new Date().toISOString(),snapshot]})});
+    lastBackupSnapshot=snapshot;updateSyncStatus("Backup request sent. Check the sheet to confirm it arrived.");
+  }catch(error){console.warn("Google Sheets backup failed",error);updateSyncStatus("Could not send the backup. Your device copy is still saved.");}
+}
 function migrateFoodKey(key){return /^\d+-\d+$/.test(key)?`original:${key.replace("-",":")}`:key;}
 function getActivePlan(){return state.food.menuPlans.find(plan=>plan.id===state.food.activeMenuPlanId)||{id:"original",name:"Original 4-week plan",weeks:MEALS};}
 function getPlanMeals(planId=state.food.activeMenuPlanId,week=state.food.week){if(planId==="original")return MEALS[week-1]||MEALS[0];return state.food.menuPlans.find(plan=>plan.id===planId)?.weeks?.[week-1]||[];}
 function foodEntryKey(week=state.food.week,day=state.food.day,planId=state.food.activeMenuPlanId){return `${planId}:${week}:${day}`;}
 function recipeSteps(recipe,planId=state.food.activeMenuPlanId){return planId==="original"?recipe.method.split(/\.\s+/).filter(Boolean).map(step=>step.replace(/[.]$/,"")):String(recipe.method||"").split(/\n+/).map(step=>step.trim()).filter(Boolean);}
 function renderMenuPlanOptions(){const select=$("#menuPlanSelect");select.innerHTML="";[{id:"original",name:"Original 4-week plan"},...state.food.menuPlans].forEach(plan=>select.add(new Option(plan.name,plan.id)));select.value=state.food.activeMenuPlanId;}
-function save(){try{localStorage.setItem(STORE_KEY,JSON.stringify(state));}catch(error){notify("This browser could not save the latest change.");}}
+function save(){try{localStorage.setItem(STORE_KEY,JSON.stringify(state));queueCloudBackup();}catch(error){notify("This browser could not save the latest change.");}}
 function notify(message,duration=3000){const el=$("#toast");el.textContent=message;el.classList.add("show");clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove("show"),duration);}
 const POPUP_MESSAGES = {
   notStarted:["Right. Shall we actually do this?","Still sitting there? Go on then.","You've got 5 minutes. Use them.","Nope. Not tomorrow. Today.","It's not going to do itself, babe.","Less thinking. More doing.","You can absolutely ignore this. But then it'll still be here tomorrow.","Come on. It's one tiny thing."],
@@ -329,6 +348,10 @@ function importSingleWeek(event){event.preventDefault();const targetWeek=Number(
 function openMealEditor(){const plan=getActivePlan();if(plan.id==="original")return;const recipe=getPlanMeals()[state.food.day];$("#editMealKicker").textContent=`${plan.name} · Week ${state.food.week} · ${weekdayName(state.food.day)}`;$("#editMealName").value=recipe.title||"";$("#editMealIngredients").value=(recipe.ingredients||[]).join("\n");$("#editMealMethod").value=recipeSteps(recipe,plan.id).join("\n");$("#editMealDialog").showModal();}
 function saveEditedMeal(event){event.preventDefault();const plan=getActivePlan();if(plan.id==="original")return;const recipe=getPlanMeals()[state.food.day];recipe.title=$("#editMealName").value.trim();recipe.ingredients=$("#editMealIngredients").value.split(/\n+/).map(item=>item.trim()).filter(Boolean);recipe.method=$("#editMealMethod").value.split(/\n+/).map(step=>step.trim()).filter(Boolean).join("\n");save();$("#editMealDialog").close();renderFood();renderDaily();notify("Dinner saved to this menu plan.");}
 function bindEvents(){
+  $("#syncSettingsButton").addEventListener("click",()=>{$("#syncSheetName").value=syncSettings.sheet;$("#enableCloudBackup").checked=syncSettings.enabled;$("#acceptPublicEndpoint").checked=syncSettings.confirmed;$("#syncDialog").showModal();updateSyncStatus(syncSettings.enabled?"Automatic backups are on.":"Backups are off.");});
+  $("#syncForm").addEventListener("submit",event=>{event.preventDefault();syncSettings.sheet=$("#syncSheetName").value.trim();syncSettings.enabled=$("#enableCloudBackup").checked;syncSettings.confirmed=$("#acceptPublicEndpoint").checked;if(syncSettings.enabled&&!syncSettings.confirmed){updateSyncStatus("Confirm the endpoint warning before enabling backups.");$("#acceptPublicEndpoint").focus();return;}saveSyncSettings();if(syncSettings.enabled)sendCloudBackup(false);else updateSyncStatus("Backup settings saved. Backups are off.");});
+  $("#backupNow").addEventListener("click",()=>{syncSettings.sheet=$("#syncSheetName").value.trim();syncSettings.enabled=$("#enableCloudBackup").checked;syncSettings.confirmed=$("#acceptPublicEndpoint").checked;saveSyncSettings();sendCloudBackup(true);});
+  $$('[data-close-sync]').forEach(button=>button.addEventListener("click",()=>$("#syncDialog").close()));
   $$('[data-view-target]').forEach(button=>button.addEventListener("click",()=>openView(button.dataset.viewTarget)));$$('[data-open-view]').forEach(button=>button.addEventListener("click",()=>openView(button.dataset.openView)));
   $("#morningTasks").addEventListener("change",event=>toggleDaily(event));$("#eveningTasks").addEventListener("change",event=>toggleDaily(event));
   $("#todayHomeTask").addEventListener("click",event=>{if(event.target.id==="todayHomeToggle"){const day=getCycleDay();if(day>0&&day<=30)updateHomeTask(day,!state.home.completed[day]);}});
@@ -353,5 +376,5 @@ function openCookingMode(){const recipe=getPlanMeals()[state.food.day];$("#cookD
 function startRecipeTimer(reset){clearInterval(timerInterval);const recipe=getPlanMeals()[state.food.day];if(reset||!timerSeconds){const match=String(recipe.method||"").match(/(\d+)\s*[–-]\s*(\d+)\s*min|approximately\s*(\d+)\s*min|\b(\d+)\s*min/i);timerSeconds=match?Number(match[2]||match[3]||match[4]||match[1])*60:15*60;}timerPaused=false;$("#timerToggle").textContent="Pause";updateTimer();timerInterval=setInterval(()=>{if(!timerPaused&&timerSeconds>0){timerSeconds--;updateTimer();if(timerSeconds===0){clearInterval(timerInterval);notify("Timer complete.");}}},1000);}
 function updateTimer(){$("#timerDisplay").textContent=`${String(Math.floor(timerSeconds/60)).padStart(2,"0")}:${String(timerSeconds%60).padStart(2,"0")}`;}
 function renderAll(){renderDaily();renderHome();renderCalendar();renderFood();renderShopping();paintIcons();}
-bindEvents();renderAll();maybeShowViewPopup(selectedView);
+bindEvents();renderAll();updateSyncStatus();maybeShowViewPopup(selectedView);
 if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(error=>console.warn("Could not enable offline support",error)));

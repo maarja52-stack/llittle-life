@@ -12,6 +12,12 @@ npx.cmd --yes http-server . -p 8001
 
 The app stores progress and plans in the browser's local storage.
 
+## Google Sheets backup
+
+The app can optionally append full-state snapshots to the spreadsheet attached to the Apps Script deployment above. Create a sheet tab named `Little Life` (or enter another existing tab name in the backup settings), then enable **Google Sheets backup** from the cloud button in the app header. The first row stores a timestamp and the second cell stores the snapshot JSON. Automatic backups are debounced after app changes.
+
+The provided Apps Script has no authentication and its GET handler only reports health. Backups are opt-in and require acknowledging that anyone with the deployment URL can append rows. The current script is append-only: it does not restore snapshots or sync data between devices. Local browser storage remains authoritative.
+
 ## Publish for your phone
 
 This is a static site and can be hosted free with GitHub Pages:
