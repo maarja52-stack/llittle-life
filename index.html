@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="life.css">
+  <link rel="stylesheet" href="life.css?v=11">
 </head>
 <body>
   <div class="app-frame">
@@ -85,6 +85,6 @@
   <dialog id="cookDialog" class="cook-dialog"><form method="dialog"><button class="icon-control dialog-close" aria-label="Close cooking mode">×</button></form><p class="eyebrow">Cooking mode</p><h2 id="cookDialogTitle"></h2><div class="timer-wrap"><strong id="timerDisplay">00:00</strong><div><button id="timerToggle" class="button button-soft" type="button">Pause</button><button id="timerReset" class="button button-soft" type="button">Reset</button></div></div><ol id="guidedMethod" class="guided-method"></ol><button id="dialogMarkCooked" class="button button-primary" type="button">Yep, I made it</button></dialog>
   <dialog id="syncDialog" class="cook-dialog"><form id="syncForm"><button class="icon-control dialog-close" type="button" data-close-sync aria-label="Close">×</button><p class="eyebrow">Your data, your Google Drive</p><h2>Connect Google</h2><p class="muted-copy">Little Life creates a private spreadsheet in the Google account you choose, then loads and saves your app data there. Local saving stays on as a fallback.</p><label class="field-label" for="googleClientId">Google OAuth web client ID<input id="googleClientId" class="text-field" required placeholder="1234567890-abc.apps.googleusercontent.com" autocomplete="off"></label><p class="muted-copy">Use the client ID only. Never paste the client secret here.</p><p class="sync-limitation">Set up a Web application OAuth client and enable Google Sheets API and Drive API. Add this site’s origin to Authorized JavaScript origins. Little Life only requests access to files it creates. Disconnecting stops sync but does not delete your spreadsheet.</p><p id="syncDialogStatus" class="muted-copy" aria-live="polite">Not connected. Local saving is on.</p><section id="syncConflict" class="sync-conflict" hidden><p class="eyebrow">Two versions found</p><h3>Which copy should we use?</h3><p id="syncConflictSummary" class="muted-copy"></p><div class="sync-conflict-actions"><button id="useGoogleCopy" class="button button-primary" type="button">Use Google copy</button><button id="keepDeviceCopy" class="button button-soft" type="button">Keep this device copy</button></div></section><div class="sync-actions"><button id="connectGoogle" class="button button-primary" type="button">Connect and sync</button><button id="disconnectGoogle" class="button button-soft" type="button" hidden>Disconnect</button></div><a id="googleSheetLink" class="sync-sheet-link" href="#" target="_blank" rel="noopener" hidden>Open your Little Life spreadsheet ↗</a></form></dialog>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="life.js" defer></script>
+  <script src="life.js?v=11" defer></script>
 </body>
 </html>
