@@ -1,4 +1,4 @@
-const CACHE_NAME = "little-life-shell-v9";
+const CACHE_NAME = "little-life-shell-v10";
 const APP_SHELL = ["./", "./index.html", "./life.css", "./life.js", "./manifest.webmanifest", "./icons/icon.svg"];
 
 self.addEventListener("install", event => {

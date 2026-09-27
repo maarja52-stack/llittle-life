@@ -1,7 +1,10 @@
 const STORE_KEY = "little-life-integrated-v1";
 const LEGACY_SHOP_KEY = "sunday-market-shopping-v1";
-const SYNC_ENDPOINT = "https://script.google.com/macros/s/AKfycby0AGZFmdmfwj7YMRCc4iix0bnvFmJaEoinlRAeoAPZZSVr7jP1g0Q28oTXBIOotrUbNw/exec";
-const SYNC_SETTINGS_KEY = "little-life-sheets-backup-v1";
+const SYNC_SETTINGS_KEY = "little-life-google-drive-sync-v1";
+const GOOGLE_SCOPE = "https://www.googleapis.com/auth/drive.file";
+const GOOGLE_FILE_MARKER = "littleLifeApp";
+const GOOGLE_FILE_MARKER_VALUE = "v1";
+const GOOGLE_SHEET_TITLE = "Little Life";
 const CATEGORIES = ["Fresh fruit and vegetables", "Meat, fish and eggs", "Dairy and chilled", "Bakery and wraps", "Dry goods, grains and pasta", "Tinned, jarred and sauces", "Frozen", "Herbs, spices and cooking basics", "Optional and substitutions", "From the freezer / already have"];
 const DAILY = {
   morning: [{id:"water",name:"Drink a glass of water",detail:"Your body has been running on vibes long enough."},{id:"teeth",name:"Brush your teeth",detail:"Come on. We both know you’re not negotiating this one."},{id:"moisturiser",name:"Hyaluronic acid + moisturiser",detail:"Two minutes. Do it now and thank yourself later."}],
@@ -71,6 +74,11 @@ let timerSeconds = 0;
 let timerPaused = false;
 let syncTimer;
 let lastBackupSnapshot = "";
+let googleAccessToken = "";
+let googleTokenExpiresAt = 0;
+let googleTokenClient;
+let googleScriptPromise;
+let pendingGoogleState = null;
 
 function loadState(){
   try {
@@ -85,19 +93,72 @@ function loadState(){
   if(!fresh.shopping.items.length) fresh.shopping.items=buildShoppingItems(1,"original",MEALS[0]);
   return fresh;
 }
-function loadSyncSettings(){try{const saved=JSON.parse(localStorage.getItem(SYNC_SETTINGS_KEY));return {enabled:Boolean(saved?.enabled),sheet:String(saved?.sheet||"Little Life"),confirmed:Boolean(saved?.confirmed)};}catch(error){return {enabled:false,sheet:"Little Life",confirmed:false};}}
-function saveSyncSettings(){try{localStorage.setItem(SYNC_SETTINGS_KEY,JSON.stringify(syncSettings));}catch(error){notify("Could not save Google Sheets settings on this device.");}}
-function updateSyncStatus(message){const header=$("#syncHeaderStatus"),dialog=$("#syncDialogStatus");if(header)header.textContent=message?(message.includes("queued")?"Queued":message.includes("Sending")?"Sending":message.includes("sent")?"Sent":message.includes("Could not")?"Error":"Local only"):(syncSettings.enabled?"Backup on":"Local only");if(dialog&&message)dialog.textContent=message;}
-function queueCloudBackup(){if(!syncSettings.enabled||!syncSettings.confirmed)return;clearTimeout(syncTimer);updateSyncStatus("Backup queued");syncTimer=setTimeout(()=>sendCloudBackup(false),1200);}
-async function sendCloudBackup(force){
-  if(!syncSettings.confirmed||(!syncSettings.enabled&&!force)){updateSyncStatus("Confirm the endpoint and enable backups first.");return;}
-  const sheet=syncSettings.sheet.trim();if(!sheet){updateSyncStatus("Enter the spreadsheet tab name first.");$("#syncSheetName").focus();return;}
-  const snapshot=JSON.stringify(state);if(snapshot===lastBackupSnapshot){updateSyncStatus("This snapshot is already backed up.");return;}
-  updateSyncStatus("Sending backup…");
+function loadSyncSettings(){try{const saved=JSON.parse(localStorage.getItem(SYNC_SETTINGS_KEY));return {clientId:String(saved?.clientId||""),spreadsheetId:String(saved?.spreadsheetId||"")};}catch(error){return {clientId:"",spreadsheetId:""};}}
+function saveSyncSettings(){try{localStorage.setItem(SYNC_SETTINGS_KEY,JSON.stringify(syncSettings));}catch(error){notify("Could not save Google connection settings on this device.");}}
+function updateSyncStatus(message){const header=$("#syncHeaderStatus"),dialog=$("#syncDialogStatus");if(header)header.textContent=message?(/error|could not|failed/i.test(message)?"Error":/changes queued|connecting to google|finding your private|saving to your google/i.test(message)?"Syncing":/up to date|data loaded|synced/i.test(message)?"Synced":/reconnect google/i.test(message)?"Reconnect":syncSettings.spreadsheetId?"Drive linked":"Local only"):(syncSettings.spreadsheetId?"Reconnect":"Local only");if(dialog&&message)dialog.textContent=message;}
+function queueCloudBackup(){if(!syncSettings.spreadsheetId)return;clearTimeout(syncTimer);if(!googleAccessToken||Date.now()>=googleTokenExpiresAt){updateSyncStatus("Reconnect Google to sync your latest changes.");return;}updateSyncStatus("Changes queued for sync.");syncTimer=setTimeout(()=>saveGoogleSnapshot().catch(error=>{console.warn("Google Sheets sync failed",error);updateSyncStatus(error.message||"Could not sync. Your device copy is still saved.");}),1200);}
+function loadGoogleIdentity(){
+  if(window.google?.accounts?.oauth2)return Promise.resolve();
+  if(!googleScriptPromise)googleScriptPromise=new Promise((resolve,reject)=>{
+    const script=document.createElement("script");script.src="https://accounts.google.com/gsi/client";script.async=true;script.defer=true;
+    script.onload=()=>window.google?.accounts?.oauth2?resolve():reject(new Error("Google Identity Services did not load."));
+    script.onerror=()=>reject(new Error("Could not load Google sign-in. Check your connection and content blockers."));document.head.append(script);
+  });
+  return googleScriptPromise;
+}
+function requestGoogleAccessToken(prompt="select_account"){
+  return loadGoogleIdentity().then(()=>new Promise((resolve,reject)=>{
+    googleTokenClient=google.accounts.oauth2.initTokenClient({client_id:syncSettings.clientId,scope:GOOGLE_SCOPE,include_granted_scopes:true,prompt,callback:response=>{
+      if(response.error){reject(new Error(response.error_description||response.error));return;}
+      googleAccessToken=response.access_token;googleTokenExpiresAt=Date.now()+(Number(response.expires_in)||3600)*1000;resolve();
+    },error_callback:error=>reject(new Error(error.message||"Google sign-in was closed or could not start."))});
+    googleTokenClient.requestAccessToken();
+  }));
+}
+async function googleApi(path,{method="GET",body}={}){
+  if(!googleAccessToken||Date.now()>=googleTokenExpiresAt)throw new Error("Reconnect Google to continue syncing.");
+  const response=await fetch(`https://www.googleapis.com/${path}`,{method,headers:{Authorization:`Bearer ${googleAccessToken}`,...(body?{"Content-Type":"application/json"}:{})},...(body?{body:JSON.stringify(body)}:{})});
+  const payload=await response.json().catch(()=>({}));
+  if(!response.ok)throw new Error(payload.error?.message||`Google API returned ${response.status}.`);
+  return payload;
+}
+async function findOrCreateGoogleSpreadsheet(){
+  const query=`mimeType='application/vnd.google-apps.spreadsheet' and trashed=false and appProperties has { key='${GOOGLE_FILE_MARKER}' and value='${GOOGLE_FILE_MARKER_VALUE}' }`;
+  const results=await googleApi(`drive/v3/files?q=${encodeURIComponent(query)}&pageSize=10&orderBy=createdTime%20desc&fields=${encodeURIComponent("files(id,name,webViewLink)")}`);
+  if(results.files?.length)return results.files[0];
+  const created=await googleApi("sheets/v4/spreadsheets",{method:"POST",body:{properties:{title:GOOGLE_SHEET_TITLE},sheets:[{properties:{title:"Little Life Data"}}]}});
+  const file=await googleApi(`drive/v3/files/${encodeURIComponent(created.spreadsheetId)}?fields=${encodeURIComponent("id,name,webViewLink")}`,{method:"PATCH",body:{appProperties:{[GOOGLE_FILE_MARKER]:GOOGLE_FILE_MARKER_VALUE}}});
+  await googleApi(`sheets/v4/spreadsheets/${encodeURIComponent(created.spreadsheetId)}/values/${encodeURIComponent("'Little Life Data'!A1:B1")}?valueInputOption=RAW`,{method:"PUT",body:{range:"'Little Life Data'!A1:B1",majorDimension:"ROWS",values:[["Updated at","Little Life data (JSON)"]]}});
+  return file;
+}
+function validRemoteState(value){return Boolean(value&&value.version===1&&value.progress&&value.home&&value.food&&value.shopping);}
+function localStateExists(){try{return Boolean(localStorage.getItem(STORE_KEY));}catch(error){return false;}}
+async function connectGoogle(){
+  syncSettings.clientId=$("#googleClientId").value.trim();
+  if(!syncSettings.clientId){updateSyncStatus("Enter the Google OAuth web client ID first.");$("#googleClientId").focus();return;}
+  saveSyncSettings();updateSyncStatus("Connecting to Google…");
   try{
-    await fetch(SYNC_ENDPOINT,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=UTF-8"},body:JSON.stringify({sheet,row:[new Date().toISOString(),snapshot]})});
-    lastBackupSnapshot=snapshot;updateSyncStatus("Backup request sent. Check the sheet to confirm it arrived.");
-  }catch(error){console.warn("Google Sheets backup failed",error);updateSyncStatus("Could not send the backup. Your device copy is still saved.");}
+    await requestGoogleAccessToken();updateSyncStatus("Finding your private Little Life spreadsheet…");
+    const file=await findOrCreateGoogleSpreadsheet();syncSettings.spreadsheetId=file.id;saveSyncSettings();
+    const range=encodeURIComponent("'Little Life Data'!A2:B2"),saved=await googleApi(`sheets/v4/spreadsheets/${encodeURIComponent(file.id)}/values/${range}`),remoteText=saved.values?.[0]?.[1]||"";
+    if(remoteText){let remote;try{remote=JSON.parse(remoteText);}catch(error){throw new Error("The spreadsheet snapshot is not valid Little Life data.");}if(!validRemoteState(remote))throw new Error("The spreadsheet does not contain a compatible Little Life snapshot.");
+      if(JSON.stringify(remote)!==JSON.stringify(state)&&localStateExists()){
+        pendingGoogleState=remote;$("#syncConflictSummary").textContent="This device and Google Drive both have app data. Choose which copy should replace the other.";$("#syncConflict").hidden=false;$("#syncDialog").showModal();$("#googleSheetLink").href=file.webViewLink||`https://docs.google.com/spreadsheets/d/${file.id}/edit`;$("#googleSheetLink").hidden=false;updateSyncStatus("Choose which copy to keep.");return;
+      }
+      applyGoogleState(remote);lastBackupSnapshot=JSON.stringify(remote);
+    }else await saveGoogleSnapshot();
+    $("#googleSheetLink").href=file.webViewLink||`https://docs.google.com/spreadsheets/d/${file.id}/edit`;$("#googleSheetLink").hidden=false;$("#syncConflict").hidden=true;$("#syncDialog").showModal();updateSyncStatus("Google connected. Your data is up to date.");
+  }catch(error){console.warn("Google connection failed",error);updateSyncStatus(error.message||"Google connection failed.");}
+}
+function applyGoogleState(remote){state=remote;try{localStorage.setItem(STORE_KEY,JSON.stringify(state));}catch(error){throw new Error("Google data loaded, but this device could not store its local copy.");}renderAll();}
+async function chooseGoogleCopy(useGoogle){if(!pendingGoogleState)return;if(useGoogle){applyGoogleState(pendingGoogleState);lastBackupSnapshot=JSON.stringify(pendingGoogleState);}else await saveGoogleSnapshot();pendingGoogleState=null;$("#syncConflict").hidden=true;updateSyncStatus(useGoogle?"Google data loaded on this device.":"This device is now synced to Google.");}
+async function saveGoogleSnapshot(){
+  if(!syncSettings.spreadsheetId)throw new Error("Connect Google before syncing.");
+  if(!googleAccessToken||Date.now()>=googleTokenExpiresAt)throw new Error("Reconnect Google to sync your latest changes.");
+  const snapshot=JSON.stringify(state);if(snapshot===lastBackupSnapshot){updateSyncStatus("Your Google copy is up to date.");return;}
+  updateSyncStatus("Saving to your Google spreadsheet…");
+  await googleApi(`sheets/v4/spreadsheets/${encodeURIComponent(syncSettings.spreadsheetId)}/values/${encodeURIComponent("'Little Life Data'!A2:B2")}?valueInputOption=RAW`,{method:"PUT",body:{range:"'Little Life Data'!A2:B2",majorDimension:"ROWS",values:[[new Date().toISOString(),snapshot]]}});
+  lastBackupSnapshot=snapshot;updateSyncStatus("Your Google copy is up to date.");
 }
 function migrateFoodKey(key){return /^\d+-\d+$/.test(key)?`original:${key.replace("-",":")}`:key;}
 function getActivePlan(){return state.food.menuPlans.find(plan=>plan.id===state.food.activeMenuPlanId)||{id:"original",name:"Original 4-week plan",weeks:MEALS};}
@@ -348,9 +409,12 @@ function importSingleWeek(event){event.preventDefault();const targetWeek=Number(
 function openMealEditor(){const plan=getActivePlan();if(plan.id==="original")return;const recipe=getPlanMeals()[state.food.day];$("#editMealKicker").textContent=`${plan.name} · Week ${state.food.week} · ${weekdayName(state.food.day)}`;$("#editMealName").value=recipe.title||"";$("#editMealIngredients").value=(recipe.ingredients||[]).join("\n");$("#editMealMethod").value=recipeSteps(recipe,plan.id).join("\n");$("#editMealDialog").showModal();}
 function saveEditedMeal(event){event.preventDefault();const plan=getActivePlan();if(plan.id==="original")return;const recipe=getPlanMeals()[state.food.day];recipe.title=$("#editMealName").value.trim();recipe.ingredients=$("#editMealIngredients").value.split(/\n+/).map(item=>item.trim()).filter(Boolean);recipe.method=$("#editMealMethod").value.split(/\n+/).map(step=>step.trim()).filter(Boolean).join("\n");save();$("#editMealDialog").close();renderFood();renderDaily();notify("Dinner saved to this menu plan.");}
 function bindEvents(){
-  $("#syncSettingsButton").addEventListener("click",()=>{$("#syncSheetName").value=syncSettings.sheet;$("#enableCloudBackup").checked=syncSettings.enabled;$("#acceptPublicEndpoint").checked=syncSettings.confirmed;$("#syncDialog").showModal();updateSyncStatus(syncSettings.enabled?"Automatic backups are on.":"Backups are off.");});
-  $("#syncForm").addEventListener("submit",event=>{event.preventDefault();syncSettings.sheet=$("#syncSheetName").value.trim();syncSettings.enabled=$("#enableCloudBackup").checked;syncSettings.confirmed=$("#acceptPublicEndpoint").checked;if(syncSettings.enabled&&!syncSettings.confirmed){updateSyncStatus("Confirm the endpoint warning before enabling backups.");$("#acceptPublicEndpoint").focus();return;}saveSyncSettings();if(syncSettings.enabled)sendCloudBackup(false);else updateSyncStatus("Backup settings saved. Backups are off.");});
-  $("#backupNow").addEventListener("click",()=>{syncSettings.sheet=$("#syncSheetName").value.trim();syncSettings.enabled=$("#enableCloudBackup").checked;syncSettings.confirmed=$("#acceptPublicEndpoint").checked;saveSyncSettings();sendCloudBackup(true);});
+  $("#syncSettingsButton").addEventListener("click",()=>{$("#googleClientId").value=syncSettings.clientId;$("#syncConflict").hidden=true;$("#googleSheetLink").hidden=!syncSettings.spreadsheetId;if(syncSettings.spreadsheetId)$("#googleSheetLink").href=`https://docs.google.com/spreadsheets/d/${syncSettings.spreadsheetId}/edit`;$("#disconnectGoogle").hidden=!syncSettings.spreadsheetId;$("#syncDialog").showModal();updateSyncStatus(syncSettings.spreadsheetId?(googleAccessToken&&Date.now()<googleTokenExpiresAt?"Google connected for this session.":"Reconnect Google to load and sync your copy."):"Not connected. Local saving is on.");});
+  $("#syncForm").addEventListener("submit",event=>{event.preventDefault();connectGoogle();});
+  $("#connectGoogle").addEventListener("click",connectGoogle);
+  $("#useGoogleCopy").addEventListener("click",()=>chooseGoogleCopy(true).catch(error=>updateSyncStatus(error.message)));
+  $("#keepDeviceCopy").addEventListener("click",()=>chooseGoogleCopy(false).catch(error=>updateSyncStatus(error.message)));
+  $("#disconnectGoogle").addEventListener("click",()=>{syncSettings.spreadsheetId="";googleAccessToken="";googleTokenExpiresAt=0;pendingGoogleState=null;saveSyncSettings();$("#syncConflict").hidden=true;$("#googleSheetLink").hidden=true;$("#disconnectGoogle").hidden=true;updateSyncStatus("Disconnected. Your local copy and Google spreadsheet were left untouched.");});
   $$('[data-close-sync]').forEach(button=>button.addEventListener("click",()=>$("#syncDialog").close()));
   $$('[data-view-target]').forEach(button=>button.addEventListener("click",()=>openView(button.dataset.viewTarget)));$$('[data-open-view]').forEach(button=>button.addEventListener("click",()=>openView(button.dataset.openView)));
   $("#morningTasks").addEventListener("change",event=>toggleDaily(event));$("#eveningTasks").addEventListener("change",event=>toggleDaily(event));
@@ -376,5 +440,5 @@ function openCookingMode(){const recipe=getPlanMeals()[state.food.day];$("#cookD
 function startRecipeTimer(reset){clearInterval(timerInterval);const recipe=getPlanMeals()[state.food.day];if(reset||!timerSeconds){const match=String(recipe.method||"").match(/(\d+)\s*[–-]\s*(\d+)\s*min|approximately\s*(\d+)\s*min|\b(\d+)\s*min/i);timerSeconds=match?Number(match[2]||match[3]||match[4]||match[1])*60:15*60;}timerPaused=false;$("#timerToggle").textContent="Pause";updateTimer();timerInterval=setInterval(()=>{if(!timerPaused&&timerSeconds>0){timerSeconds--;updateTimer();if(timerSeconds===0){clearInterval(timerInterval);notify("Timer complete.");}}},1000);}
 function updateTimer(){$("#timerDisplay").textContent=`${String(Math.floor(timerSeconds/60)).padStart(2,"0")}:${String(timerSeconds%60).padStart(2,"0")}`;}
 function renderAll(){renderDaily();renderHome();renderCalendar();renderFood();renderShopping();paintIcons();}
-bindEvents();renderAll();updateSyncStatus();maybeShowViewPopup(selectedView);
+bindEvents();renderAll();updateSyncStatus(syncSettings.spreadsheetId?"Reconnect Google to load and sync your data.":"Local saving is on. Connect Google to create your private spreadsheet.");maybeShowViewPopup(selectedView);
 if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(error=>console.warn("Could not enable offline support",error)));

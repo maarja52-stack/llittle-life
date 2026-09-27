@@ -12,11 +12,18 @@ npx.cmd --yes http-server . -p 8001
 
 The app stores progress and plans in the browser's local storage.
 
-## Google Sheets backup
+## Personal Google Sheets sync
 
-The app can optionally append full-state snapshots to the spreadsheet attached to the Apps Script deployment above. Create a sheet tab named `Little Life` (or enter another existing tab name in the backup settings), then enable **Google Sheets backup** from the cloud button in the app header. The first row stores a timestamp and the second cell stores the snapshot JSON. Automatic backups are debounced after app changes.
+The app can keep each person's Little Life data in a private spreadsheet in their own Google Drive. Local storage remains enabled as an offline fallback.
 
-The provided Apps Script has no authentication and its GET handler only reports health. Backups are opt-in and require acknowledging that anyone with the deployment URL can append rows. The current script is append-only: it does not restore snapshots or sync data between devices. Local browser storage remains authoritative.
+1. In Google Cloud Console, create an OAuth client ID of type **Web application** and configure the OAuth consent screen. Add the app's exact origin to **Authorized JavaScript origins**. For local testing, add `http://localhost:8001` too. If the consent screen is in Testing mode, add each user as a test user or publish the app as required by Google.
+2. Enable **Google Sheets API** and **Google Drive API** in the same Cloud project.
+3. In the app, open the cloud control, paste the OAuth client ID, and choose **Connect and sync**. Approve the `drive.file` access request. Little Life finds or creates a private `Little Life` spreadsheet in that Google account.
+4. When both this device and Google Drive already contain data, choose which copy to keep. The chosen snapshot replaces the other copy.
+
+The OAuth client ID is public configuration, not a client secret; never put a client secret in the app. Access tokens are held in memory and are requested again when reconnecting. Google access uses the `drive.file` scope, limited to files created by this app. Disconnecting removes the app's local link and stops syncing; it does not delete the spreadsheet or revoke Google's grant. Users can revoke that grant in their Google Account permissions.
+
+The old Apps Script URL only appends unauthenticated rows to one shared sheet. It is no longer used for personal sync.
 
 ## Publish for your phone
 
