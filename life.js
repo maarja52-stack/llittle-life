@@ -248,8 +248,6 @@ function renderDaily(){
   const record=dayProgress();
   for(const phase of ["morning","evening"]){const tasks=DAILY[phase],host=$(`#${phase}Tasks`);host.innerHTML=tasks.map(task=>`<label class="daily-check ${record[phase].includes(task.id)?"is-done":""}"><input type="checkbox" data-phase="${phase}" data-task="${task.id}" ${record[phase].includes(task.id)?"checked":""}><span>${task.name}</span></label>`).join("");$(`#${phase}Count`).textContent=`${record[phase].length} / ${tasks.length}`;}
   const total=record.morning.length+record.evening.length;$("#dailySavedStatus").textContent=total?`${total} small step${total===1?"":"s"} saved for today.`:"Progress saves on this device.";
-  const cycleDay=getCycleDay();const todayTask=cycleDay?HOME_TASKS[cycleDay-1]:null;$("#todayHomeTitle").textContent=todayTask?todayTask.title:"Start your 30-day reset";$("#todayHomeTask").innerHTML=todayTask?`<div><strong class="today-task-title">Day ${cycleDay} · ${todayTask.zone}</strong><p>${todayTask.duration} · ${todayTask.steps[0]}</p></div><button class="button ${state.home.completed[todayTask.id]?"button-soft":"button-primary"}" type="button" id="todayHomeToggle">${state.home.completed[todayTask.id]?"Done ✓":"Mark done"}</button>`:`<div><strong class="today-task-title">A focused home task</strong><p>Start the reset whenever you’re ready.</p></div><button class="button button-soft" type="button" data-open-view="home">View plan</button>`;
-  const weekday=(now.getDay()+6)%7;const dinner=getPlanMeals(state.food.activeMenuPlanId,state.food.week)[weekday]||MEALS[0][weekday];$("#todayMealTitle").textContent=dinner.title;$("#todayMeal").innerHTML=`<div><strong class="today-task-title">${escapeHTML(dinner.title)}</strong><p>${getActivePlan().name} · Week ${state.food.week} · ${weekdayName(weekday)}${state.food.cooked[foodEntryKey(state.food.week,weekday)]?" · Cooked ✓":""}</p></div><button class="button button-soft" type="button" data-open-view="food">Open recipe</button>`;
   paintIcons();
 }
 const renderDailyBase = renderDaily;
@@ -262,12 +260,6 @@ renderDaily = function(){
     if(task)row.querySelector("span").innerHTML=`<strong>${task.name}</strong><br><small>${task.detail}</small>`;
   });
   $("#dailyEncouragement").textContent="One small act of care is still care. But babe, you do actually have to do it.";
-  $("#todayHomeTitle").textContent="Ready to get your shit together?";
-  const cycleDay=getCycleDay(),todayTask=cycleDay?HOME_TASKS[cycleDay-1]:null,homeHost=$("#todayHomeTask");
-  const taskDetails=todayTask?`<p>Day ${cycleDay} · ${todayTask.zone} · ${todayTask.duration} · ${todayTask.steps[0]}</p>`:"";
-  const homeButton=todayTask?`<button class="button ${state.home.completed[todayTask.id]?"button-soft":"button-primary"}" type="button" id="todayHomeToggle">${state.home.completed[todayTask.id]?"Done ✓":"Mark done"}</button>`:'<button class="button button-soft" type="button" data-open-view="home">View plan</button>';
-  homeHost.innerHTML=`<div><strong class="today-task-title">A focused home task</strong><p>One task. Not seventeen. Pick it. Do it. Stop negotiating with yourself.</p>${taskDetails}</div>${homeButton}`;
-  $("#todayMeal").querySelector("button").textContent="See recipe";
 };
 function getCycleDay(){if(!state.home.startDate)return 0;const start=parseLocalDate(state.home.startDate),today=parseLocalDate(todayKey());return Math.floor((today-start)/86400000)+1;}
 const HOME_TASK_DESCRIPTIONS = {
@@ -468,7 +460,6 @@ function bindEvents(){
   $$('[data-close-sync]').forEach(button=>button.addEventListener("click",()=>$("#syncDialog").close()));
   $$('[data-view-target]').forEach(button=>button.addEventListener("click",()=>openView(button.dataset.viewTarget)));$$('[data-open-view]').forEach(button=>button.addEventListener("click",()=>openView(button.dataset.openView)));
   $("#morningTasks").addEventListener("change",event=>toggleDaily(event));$("#eveningTasks").addEventListener("change",event=>toggleDaily(event));
-  $("#todayHomeTask").addEventListener("click",event=>{if(event.target.id==="todayHomeToggle"){const day=getCycleDay();if(day>0&&day<=30)updateHomeTask(day,!state.home.completed[day]);}});
   $("#startCycle").addEventListener("click",()=>{state.home.startDate=todayKey();state.home.completed={};save();renderHome();renderDaily();renderCalendar();showPopup("homeReset");});
   $("#homePlan").addEventListener("change",event=>{const id=Number(event.target.dataset.homeTask);if(id)updateHomeTask(id,event.target.checked);});
   ["#weeklyMorningTasks","#weeklyEveningTask"].forEach(selector=>$(selector).addEventListener("change",toggleWeeklyCare));

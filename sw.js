@@ -1,5 +1,5 @@
-const CACHE_NAME = "little-life-shell-v17";
-const APP_SHELL = ["./", "./index.html", "./life.css?v=17", "./life.js?v=17", "./manifest.webmanifest", "./icons/icon.svg"];
+const CACHE_NAME = "little-life-shell-v18";
+const APP_SHELL = ["./", "./index.html", "./life.css?v=18", "./life.js?v=18", "./manifest.webmanifest", "./icons/icon.svg"];
 
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(APP_SHELL)));
