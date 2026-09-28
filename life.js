@@ -7,9 +7,19 @@ const GOOGLE_FILE_MARKER_VALUE = "v1";
 const GOOGLE_SHEET_TITLE = "Little Life";
 const CATEGORIES = ["Fresh fruit and vegetables", "Meat, fish and eggs", "Dairy and chilled", "Bakery and wraps", "Dry goods, grains and pasta", "Tinned, jarred and sauces", "Frozen", "Herbs, spices and cooking basics", "Optional and substitutions", "From the freezer / already have"];
 const DAILY = {
-  morning: [{id:"water",name:"Drink a glass of water",detail:"Your body has been running on vibes long enough."},{id:"teeth",name:"Brush your teeth",detail:"Come on. We both know you’re not negotiating this one."},{id:"moisturiser",name:"Hyaluronic acid + moisturiser",detail:"Two minutes. Do it now and thank yourself later."}],
-  evening: [{id:"floss",name:"Floss your teeth",detail:"Get in between the damn things. Your dentist is watching. Probably."},{id:"evening-teeth",name:"Brush your teeth",detail:"Yep. Again. Morning-you did not do enough to earn a free pass."},{id:"skincare",name:"A little evening skincare",detail:"Wash your face. Slap on some moisturiser. Pretend you’ve got your life together."}]
+  morning: [{id:"water",name:"Drink a glass of water",detail:"Your body has been running on vibes long enough."},{id:"teeth",name:"Brush your teeth",detail:"Come on. We both know you’re not negotiating this one."},{id:"moisturiser",name:"Moisturiser",detail:"Two minutes. Apply it now and thank yourself later."}],
+  evening: [{id:"floss",name:"Floss your teeth",detail:"Get in between the damn things. Your dentist is watching. Probably."},{id:"evening-teeth",name:"Brush your teeth",detail:"Yep. Again. Morning-you did not do enough to earn a free pass."},{id:"face-care",name:"Basic face care",detail:"Wash your face, moisturise, and call it a win."}]
 };
+const WEEKLY_CARE = [
+  {morning:[{id:"hair-wash",name:"Hair wash",detail:"Clean-hair day. You’ve got this."},{id:"shower",name:"Shower",detail:"Optional. Skipping this is not a failed day.",optional:true}],evening:{id:"retinol",name:"Retinol night",detail:"Retinol night. Keep it simple and be kind to your skin."}},
+  {morning:[{id:"shower",name:"Shower",detail:"Optional. Skipping this is not a failed day.",optional:true},{id:"body-care",name:"Body care",detail:"A little body care, at whatever level works today."}],evening:{id:"normal-skincare",name:"Normal skincare",detail:"Your usual gentle routine. Nothing extra required."}},
+  {morning:[{id:"hair-wash",name:"Hair wash",detail:"Clean-hair day. You’ve got this."},{id:"shower",name:"Shower",detail:"Optional. Skipping this is not a failed day.",optional:true}],evening:{id:"reedle-shot",name:"Reedle Shot night",detail:"Reedle Shot night. Follow your product directions and keep the rest gentle."}},
+  {morning:[{id:"shower",name:"Shower",detail:"Optional. Skipping this is not a failed day.",optional:true},{id:"body-care",name:"Body care",detail:"Thursday’s planned body-care routine."}],evening:{id:"retinol",name:"Retinol night",detail:"Retinol night. Keep it simple and be kind to your skin."}},
+  {morning:[{id:"hair-wash",name:"Hair wash",detail:"Clean-hair day. You’ve got this."},{id:"shower",name:"Shower",detail:"Optional. Skipping this is not a failed day.",optional:true}],evening:{id:"normal-skincare",name:"Normal skincare",detail:"Your usual gentle routine. Nothing extra required."}},
+  {morning:[{id:"shower",name:"Shower",detail:"Optional. Skipping this is not a failed day.",optional:true},{id:"scrub-shaving",name:"Scrub / shaving",detail:"Saturday’s planned scrub or shaving routine."}],evening:{id:"mask",name:"Mask night",detail:"Mask night. Put your feet up while it does its thing."}},
+  {morning:[{id:"hair-wash",name:"Hair wash",detail:"Clean-hair day. You’ve got this."},{id:"shower",name:"Shower",detail:"Optional. Skipping this is not a failed day.",optional:true}],evening:{id:"sunday-skincare",name:"Normal skincare / collagen serum / whatever feels nice",detail:"Pick whatever feels kind to your skin tonight."}}
+];
+function plannedCareForDate(date){const parsed=parseLocalDate(date),weekday=(parsed.getDay()+6)%7,plan=WEEKLY_CARE[weekday];return {morning:plan.morning.map(task=>({...task})),evening:{...plan.evening},weekday};}
 const HOME_WEEKS = [
   {title:"Week 1 · Get the basics under control", tasks:[["Kitchen","Kitchen","25–30 min",["Clean hob","Wipe cabinet fronts","Clean sink","Wipe appliances","Clean table","Mop floor"]],["Bathroom","Bathroom","30 min",["Clean toilet","Clean sink and mirror","Clean shower and drain","Wipe taps","Mop floor","Replace towels"]],["Your bedroom","Bedroom","25 min",["Change sheets","Put clothes away","Clear bedside tables","Dust surfaces","Vacuum"]],["Child’s bedroom","Child’s bedroom","25 min",["Change sheets","Put clothes away","Clear surfaces","Dust","Vacuum","Empty rubbish"]],["Living room","Living room","30 min",["Put things away","Dust surfaces","Vacuum sofa and floor","Mop floor","Clean fingerprints"]],["WC","Separate WC","15 min",["Clean toilet","Clean sink and mirror","Wipe handle and switch","Clean floor","Restock toilet paper"]],["Hallways + entrance","Hallways","25 min",["Declutter hallways","Dust skirting","Vacuum and mop","Wipe front door","Check shoes and coats"]]]},
   {title:"Week 2 · Deeper rotation", tasks:[["Kitchen appliances","Kitchen","25 min",["Clean dishwasher filter","Wipe dishwasher door","Clean washer and dryer","Clean appliance seals","Clean kettle or coffee machine"]],["Shower deep clean","Bathroom","30–40 min",["Clean shower glass","Clean tiles and grout","Clean shower head","Clear drain","Scrub floor and corners"]],["Bedroom details","Bedroom","20 min",["Dust lamps and headboard","Check under bed","Wipe windowsill and mirrors","Vacuum corners","Tidy bedside table"]],["Child’s room details","Child’s bedroom","20 min",["Wipe desk and shelves","Check under bed","Sort clothes","Clear rubbish","Vacuum corners"]],["Living room details","Living room","30 min",["Dust electronics and lamps","Clean screen","Wipe windowsills","Vacuum sofa and corners","Check under furniture"]],["Laundry day","Laundry","45–60 min",["Sort and wash","Dry, fold, put away","Empty laundry basket","Clean detergent drawer and seal","Clean dryer filter"]],["Balcony","Balcony + storage","20 min",["Remove rubbish","Sweep and mop","Wipe furniture and railing","Check plants","Tidy stored items"]]]},
@@ -73,12 +83,25 @@ let timerInterval;
 let timerSeconds = 0;
 let timerPaused = false;
 let syncTimer;
+let dailyRolloverTimer;
 let lastBackupSnapshot = "";
 let googleAccessToken = "";
 let googleTokenExpiresAt = 0;
 let googleTokenClient;
 let googleScriptPromise;
 let pendingGoogleState = null;
+function migrateLegacyHomeHistory(){
+  if(!state.home.startDate)return;
+  let changed=false;const start=parseLocalDate(state.home.startDate);
+  Object.entries(state.home.completed||{}).forEach(([id,completed])=>{
+    const task=HOME_TASKS[Number(id)-1];if(!completed||!task)return;
+    const date=new Date(start);date.setDate(date.getDate()+task.id-1);const key=localKey(date);
+    if(state.progress[key]?.home)return;
+    const record=state.progress[key]||(state.progress[key]={morning:[],evening:[]});record.home={title:task.title,zone:task.zone,duration:task.duration,completed:true};changed=true;
+  });
+  if(changed){try{localStorage.setItem(STORE_KEY,JSON.stringify(state));}catch(error){console.warn("Could not migrate Home Reset history",error);}}
+}
+migrateLegacyHomeHistory();
 
 function loadState(){
   try {
@@ -199,7 +222,27 @@ function showCompletionPopup(before,after,total){if(after>=total){showPopup("all
 function icon(name){const paths={sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"/>',house:'<path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"/>',"calendar-days":'<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/>',utensils:'<path d="M3 2v7a4 4 0 0 0 4 4v9M7 2v5M11 2v5a4 4 0 0 1-4 4M16 14v8M16 14a5 5 0 0 0 5-5V2c-3 0-5 3-5 7v5Z"/>',"shopping-basket":'<path d="m5 11 1 10h12l1-10M3 11h18M8 11l4-8 4 8M9 15v2m6-2v2"/>',check:'<path d="m5 12 4 4L19 6"/>',play:'<path d="m7 4 13 8-13 8z"/>',snowflake:'<path d="m12 2 0 20m8-16-16 12m16 0L4 6m8-4 3 3m-3-3-3 3m3 15 3 3m-3-3-3 3m9-15-4 1m4-1-1 4m-15 6 4-1m-4 1 1-4"/>',"rotate-ccw":'<path d="M3 7v6h6M4 13a8 8 0 1 0 2-6L3 13"/>',"list-filter":'<path d="M4 6h16M7 12h10m-7 6h4"/>',"circle-check":'<circle cx="12" cy="12" r="9"/><path d="m8 12 2.5 2.5L16 9"/>',plus:'<path d="M12 5v14M5 12h14"/>',search:'<circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/>'};return `<svg aria-hidden="true" viewBox="0 0 24 24">${paths[name]||""}</svg>`;}
 function paintIcons(){ $$('[data-icon]').forEach(el=>el.innerHTML=icon(el.dataset.icon)); }
 function openView(view){selectedView=view;$$('[data-view]').forEach(section=>{const active=section.dataset.view===view;section.hidden=!active;section.classList.toggle("active",active);});$$('[data-view-target]').forEach(button=>button.classList.toggle("active",button.dataset.viewTarget===view));window.scrollTo({top:0,behavior:"smooth"});maybeShowViewPopup(view);}
-function dayProgress(date=todayKey()){if(!state.progress[date])state.progress[date]={morning:[],evening:[]};const record=state.progress[date];for(const phase of ["morning","evening"]){const validTasks=new Set(DAILY[phase].map(task=>task.id));record[phase]=(Array.isArray(record[phase])?record[phase]:[]).filter(id=>validTasks.has(id));}return record;}
+function dayProgress(date=todayKey()){
+  let changed=false;
+  if(!state.progress[date]){state.progress[date]={morning:[],evening:[]};changed=true;}
+  const record=state.progress[date];
+  if(Array.isArray(record.evening)&&record.evening.includes("skincare")){record.evening=record.evening.map(id=>id==="skincare"?"face-care":id);changed=true;}
+  for(const phase of ["morning","evening"]){const validTasks=new Set(DAILY[phase].map(task=>task.id)),wasArray=Array.isArray(record[phase]),old=wasArray?record[phase]:[],clean=old.filter(id=>validTasks.has(id));if(!wasArray||clean.length!==old.length){record[phase]=clean;changed=true;}}
+  if(!record.weeklyCare){const plan=plannedCareForDate(date);record.weeklyCare={weekday:plan.weekday,morning:plan.morning.map(({id,name,detail,optional})=>({id,name,detail,optional:Boolean(optional)})),evening:{...plan.evening},completed:[]};changed=true;}
+  if(!Array.isArray(record.weeklyCare.completed)){record.weeklyCare.completed=[];changed=true;}
+  if(!record.meal){const day=(parseLocalDate(date).getDay()+6)%7,planId=state.food.activeMenuPlanId,week=state.food.week,recipe=getPlanMeals(planId,week)[day],key=`${planId}:${week}:${day}`;if(recipe){record.meal={planId,week,day,title:recipe.title,note:state.food.notes[key]||"",cooked:state.food.cooked[key]===date};changed=true;}}
+  if(!record.home&&state.home.startDate){const cycleDay=Math.floor((parseLocalDate(date)-parseLocalDate(state.home.startDate))/86400000)+1,task=HOME_TASKS[cycleDay-1];if(task) {record.home={title:task.title,zone:task.zone,duration:task.duration,completed:Boolean(state.home.completed[cycleDay])};changed=true;}}
+  if(changed)save();
+  return record;
+}
+function renderWeeklyCare(){
+  const record=dayProgress(),plan=record.weeklyCare;
+  $("#weeklyCareWeekday").textContent=`${weekdayName(plan.weekday)} · your weekly rhythm`;
+  $("#tonightRoutineTitle").textContent=`Tonight: ${plan.evening.name}`;
+  const renderTask=task=>`<label class="planned-care-row ${record.weeklyCare.completed.includes(task.id)?"is-done":""}"><input type="checkbox" data-week-care="${task.id}" ${record.weeklyCare.completed.includes(task.id)?"checked":""}><span><strong>${task.name}</strong>${task.optional?'<small class="optional-tag">Optional</small>':""}<small>${task.detail}</small></span></label>`;
+  $("#weeklyMorningTasks").innerHTML=plan.morning.map(renderTask).join("");
+  $("#weeklyEveningTask").innerHTML=renderTask(plan.evening);
+}
 function renderDaily(){
   const now=new Date();$("#headerDate").textContent=now.toLocaleDateString(undefined,{weekday:"long",month:"long",day:"numeric"});$("#dailyWeekday").textContent=now.toLocaleDateString(undefined,{weekday:"short"});$("#dailyDay").textContent=String(now.getDate()).padStart(2,"0");$("#dailyMonth").textContent=now.toLocaleDateString(undefined,{month:"long"});
   const record=dayProgress();
@@ -212,6 +255,7 @@ function renderDaily(){
 const renderDailyBase = renderDaily;
 renderDaily = function(){
   renderDailyBase();
+  renderWeeklyCare();
   const taskCopy = Object.values(DAILY).flat();
   $$(".daily-check").forEach(row=>{
     const task=taskCopy.find(item=>item.id===row.querySelector("input").dataset.task);
@@ -262,8 +306,8 @@ function renderHome(){
 }
 function weekdayName(day){return ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"][day];}
 function foodCookedForDate(date){return Object.entries(state.food.cooked).filter(([,cookedDate])=>cookedDate===date).map(([key])=>{const parts=key.split(":");const planId=parts.length===3?parts[0]:"original",week=parts.length===3?Number(parts[1]):Number(key.split("-")[0]),day=parts.length===3?Number(parts[2]):Number(key.split("-")[1]);return getPlanMeals(planId,week)[day]?.title;}).filter(Boolean);}
-function homeDoneOn(date){const cycle=state.home.startDate?Math.floor((parseLocalDate(date)-parseLocalDate(state.home.startDate))/86400000)+1:0;return cycle>0&&HOME_TASKS[cycle-1]&&state.home.completed[cycle]?HOME_TASKS[cycle-1]:null;}
-function calendarActivity(date){const record=state.progress[date]||{},validTasks=new Set(Object.values(DAILY).flat().map(task=>task.id)),careCount=[...(record.morning||[]),...(record.evening||[])].filter(id=>validTasks.has(id)).length,homeTask=homeDoneOn(date),dinners=foodCookedForDate(date);return {careCount,homeTask,dinners,wins:careCount+(homeTask?1:0)+dinners.length};}
+function homeDoneOn(date){const historical=state.progress[date]?.home;if(historical?.completed&&historical.title)return historical;const cycle=state.home.startDate?Math.floor((parseLocalDate(date)-parseLocalDate(state.home.startDate))/86400000)+1:0;return cycle>0&&HOME_TASKS[cycle-1]&&state.home.completed[cycle]?HOME_TASKS[cycle-1]:null;}
+function calendarActivity(date){const record=state.progress[date]||{},validTasks=new Set(Object.values(DAILY).flat().map(task=>task.id)),careCount=[...(record.morning||[]),...(record.evening||[])].filter(id=>validTasks.has(id)||id==="skincare").length,weeklyCareCount=(record.weeklyCare?.completed||[]).length,homeTask=homeDoneOn(date),homeStatus=record.home?.title?record.home:homeTask,dinners=foodCookedForDate(date);return {careCount,weeklyCareCount,homeTask,homeStatus,dinners,wins:careCount+weeklyCareCount+(homeTask?1:0)+dinners.length};}
 function weekStartFor(date){const start=parseLocalDate(date);start.setDate(start.getDate()-((start.getDay()+6)%7));return start;}
 function weekLabel(date){const start=weekStartFor(date),end=new Date(start);end.setDate(end.getDate()+6);return `${start.toLocaleDateString(undefined,{month:"short",day:"numeric"})} – ${end.toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"})}`;}
 function renderCalendar(){
@@ -275,26 +319,32 @@ function renderCalendar(){
   const first=new Date(year,month,1),start=new Date(year,month,1-((first.getDay()+6)%7));let monthMarkup="";
   for(let index=0;index<42;index++){
     const date=new Date(start);date.setDate(start.getDate()+index);const key=localKey(date),activity=calendarActivity(key);
-    monthMarkup+=`<button type="button" role="gridcell" class="calendar-day ${date.getMonth()!==month?"outside":""} ${key===selectedCalendarDate?"selected":""} ${key===todayKey()?"today":""}" data-calendar-date="${key}" aria-label="${date.toLocaleDateString(undefined,{dateStyle:"full"})}${activity.careCount?`, care ${activity.careCount} of ${Object.values(DAILY).flat().length}`:""}${activity.homeTask?`, home ${activity.homeTask.zone}`:""}${activity.dinners.length?`, dinner ${activity.dinners.join(", ")}`:""}"><span class="calendar-date">${date.getDate()}</span><span class="calendar-markers">${activity.careCount?'<i class="progress-dot"></i>':''}${activity.homeTask?'<i class="home-dot"></i>':''}${activity.dinners.length?'<i class="food-dot"></i>':''}</span></button>`;
+    monthMarkup+=`<button type="button" role="gridcell" class="calendar-day ${date.getMonth()!==month?"outside":""} ${key===selectedCalendarDate?"selected":""} ${key===todayKey()?"today":""}" data-calendar-date="${key}" aria-label="${date.toLocaleDateString(undefined,{dateStyle:"full"})}${activity.careCount?`, care ${activity.careCount} of ${Object.values(DAILY).flat().length}`:""}${activity.weeklyCareCount?`, weekly care ${activity.weeklyCareCount} done`:""}${activity.homeTask?`, home ${activity.homeTask.zone}`:""}${activity.dinners.length?`, dinner ${activity.dinners.join(", ")}`:""}"><span class="calendar-date">${date.getDate()}</span><span class="calendar-markers">${activity.careCount||activity.weeklyCareCount?'<i class="progress-dot"></i>':''}${activity.homeTask?'<i class="home-dot"></i>':''}${activity.dinners.length?'<i class="food-dot"></i>':''}</span></button>`;
   }
   $("#calendarGrid").innerHTML=monthMarkup;
   const weekStart=weekStartFor(selectedCalendarDate);let weekMarkup="";
   for(let index=0;index<7;index++){
     const date=new Date(weekStart);date.setDate(weekStart.getDate()+index);const key=localKey(date),activity=calendarActivity(key);
-    weekMarkup+=`<button type="button" class="week-day ${key===selectedCalendarDate?"selected":""} ${key===todayKey()?"today":""}" data-calendar-date="${key}" aria-label="${date.toLocaleDateString(undefined,{dateStyle:"full"})}, ${activity.wins} little ${activity.wins===1?"win":"wins"}"><span class="week-day-name">${date.toLocaleDateString(undefined,{weekday:"short"})}</span><strong class="week-day-number">${date.getDate()}</strong><span class="week-day-markers" aria-hidden="true">${activity.careCount?'<i class="progress-dot"></i>':''}${activity.homeTask?'<i class="home-dot"></i>':''}${activity.dinners.length?'<i class="food-dot"></i>':''}</span><span class="week-day-wins">${activity.wins?`${activity.wins} ${activity.wins===1?"win":"wins"}`:"—"}</span></button>`;
+    weekMarkup+=`<button type="button" class="week-day ${key===selectedCalendarDate?"selected":""} ${key===todayKey()?"today":""}" data-calendar-date="${key}" aria-label="${date.toLocaleDateString(undefined,{dateStyle:"full"})}, ${activity.wins} little ${activity.wins===1?"win":"wins"}"><span class="week-day-name">${date.toLocaleDateString(undefined,{weekday:"short"})}</span><strong class="week-day-number">${date.getDate()}</strong><span class="week-day-markers" aria-hidden="true">${activity.careCount||activity.weeklyCareCount?'<i class="progress-dot"></i>':''}${activity.homeTask?'<i class="home-dot"></i>':''}${activity.dinners.length?'<i class="food-dot"></i>':''}</span><span class="week-day-wins">${activity.wins?`${activity.wins} ${activity.wins===1?"win":"wins"}`:"—"}</span></button>`;
   }
   $("#calendarWeekStrip").innerHTML=weekMarkup;renderCalendarDetail();renderMonthReflection();
 }
 function renderCalendarDetail(){
-  const date=selectedCalendarDate,parsed=parseLocalDate(date),activity=calendarActivity(date),careTotal=Object.values(DAILY).flat().length;
+  const date=selectedCalendarDate,parsed=parseLocalDate(date),activity=calendarActivity(date),careTotal=Object.values(DAILY).flat().length,record=state.progress[date],weeklyPlan=record?.weeklyCare||(()=>{const plan=plannedCareForDate(date);return {morning:plan.morning,evening:plan.evening,completed:[]};})();
   $("#detailDayNumber").textContent=String(parsed.getDate());$("#detailDate").textContent=parsed.toLocaleDateString(undefined,{weekday:"long",month:"long",day:"numeric"});$("#detailKicker").textContent=date===todayKey()?"Today":"Selected day";
   const events=[];
-  if(activity.careCount)events.push(`<div class="calendar-event"><span class="calendar-event-icon" aria-hidden="true">💧</span><span>Care · ${activity.careCount}/${careTotal}</span></div>`);
-  if(activity.homeTask)events.push(`<div class="calendar-event"><span class="calendar-event-icon" aria-hidden="true">🏠</span><span>Home · ${escapeHTML(activity.homeTask.zone)}</span></div>`);
-  activity.dinners.forEach(name=>events.push(`<div class="calendar-event"><span class="calendar-event-icon" aria-hidden="true">🍲</span><span>Dinner · ${escapeHTML(name)}</span></div>`));
-  if(events.length){events.push(`<p class="calendar-win-summary">${activity.wins} little thing${activity.wins===1?"":"s"}. Not bad, babe.</p>`);$("#detailContent").innerHTML=events.join("");}
-  else if(date===todayKey())$("#detailContent").innerHTML='<div class="calendar-empty"><p><strong>Nothing logged yet.</strong></p><p>And that’s okay.</p><h3>Today isn’t over, babe.</h3><p>Go do one tiny thing and come back here to give yourself a little tick.</p></div>';
-  else $("#detailContent").innerHTML='<div class="calendar-empty"><p><strong>Nothing logged for this day.</strong></p><p>That’s okay. Just pick up today.</p></div>';
+  {const completedEssentials=Object.values(DAILY).flat().filter(task=>(record?.morning||[]).includes(task.id)||(record?.evening||[]).includes(task.id)||(task.id==="face-care"&&(record?.evening||[]).includes("skincare")));events.push(`<div class="calendar-event"><span class="calendar-event-icon" aria-hidden="true">💧</span><div><strong>Daily essentials · ${activity.careCount}/${careTotal}</strong>${completedEssentials.length?`<ul>${completedEssentials.map(task=>`<li>${escapeHTML(task.name)} · done</li>`).join("")}</ul>`:""}</div></div>`);}
+  const weeklyRows=weeklyPlan.morning.map(task=>{const done=(weeklyPlan.completed||[]).includes(task.id),status=done?"Done":task.optional?"Optional · not done":"Planned · not marked done";return `<li><strong>${escapeHTML(task.name)}</strong> <span>${status}</span></li>`;});
+  const eveningDone=(weeklyPlan.completed||[]).includes(weeklyPlan.evening.id);
+  weeklyRows.push(`<li><strong>Tonight: ${escapeHTML(weeklyPlan.evening.name)}</strong> <span>${eveningDone?"Done":"Planned · not marked done"}</span></li>`);
+  events.push(`<div class="calendar-event calendar-routine-history"><span class="calendar-event-icon" aria-hidden="true">🧴</span><div><strong>Weekly care · ${weekdayName(weeklyPlan.weekday??((parsed.getDay()+6)%7))}</strong><ul>${weeklyRows.join("")}</ul></div></div>`);
+  if(activity.homeStatus)events.push(`<div class="calendar-event"><span class="calendar-event-icon" aria-hidden="true">🏠</span><span>Home · ${escapeHTML(activity.homeStatus.zone||activity.homeStatus.title)} · ${activity.homeStatus.completed?"done":"not done"}</span></div>`);
+  if(record?.meal?.title){events.push(`<div class="calendar-event"><span class="calendar-event-icon" aria-hidden="true">🍲</span><span>Dinner · ${escapeHTML(record.meal.title)} · ${record.meal.cooked||activity.dinners.length?"cooked":"planned"}</span></div>`);if(record.meal.note)events.push(`<p class="calendar-history-note"><strong>Dinner note:</strong> ${escapeHTML(record.meal.note)}</p>`);}
+  else activity.dinners.forEach(name=>events.push(`<div class="calendar-event"><span class="calendar-event-icon" aria-hidden="true">🍲</span><span>Dinner · ${escapeHTML(name)} · cooked</span></div>`));
+  if(record?.notes)events.push(`<p class="calendar-history-note"><strong>Note:</strong> ${escapeHTML(record.notes)}</p>`);
+  if(date===todayKey()&&!activity.careCount&&!activity.weeklyCareCount&&!activity.homeTask&&!activity.dinners.length)events.push('<div class="calendar-empty"><p><strong>Nothing logged yet.</strong></p><p>And that’s okay.</p><h3>Today isn’t over, babe.</h3><p>Go do one tiny thing and come back here to give yourself a little tick.</p></div>');
+  if(activity.wins)events.push(`<p class="calendar-win-summary">${activity.wins} little thing${activity.wins===1?"":"s"}. Not bad, babe.</p>`);
+  $("#detailContent").innerHTML=events.join("");
 }
 function renderMonthReflection(){
   const year=shownMonth.getFullYear(),month=shownMonth.getMonth(),daysInMonth=new Date(year,month+1,0).getDate(),now=new Date(),isCurrent=year===now.getFullYear()&&month===now.getMonth(),isPast=new Date(year,month,1)<new Date(now.getFullYear(),now.getMonth(),1),elapsedDays=isCurrent?now.getDate():isPast?daysInMonth:0;
@@ -421,6 +471,7 @@ function bindEvents(){
   $("#todayHomeTask").addEventListener("click",event=>{if(event.target.id==="todayHomeToggle"){const day=getCycleDay();if(day>0&&day<=30)updateHomeTask(day,!state.home.completed[day]);}});
   $("#startCycle").addEventListener("click",()=>{state.home.startDate=todayKey();state.home.completed={};save();renderHome();renderDaily();renderCalendar();showPopup("homeReset");});
   $("#homePlan").addEventListener("change",event=>{const id=Number(event.target.dataset.homeTask);if(id)updateHomeTask(id,event.target.checked);});
+  ["#weeklyMorningTasks","#weeklyEveningTask"].forEach(selector=>$(selector).addEventListener("change",toggleWeeklyCare));
   $("#previousMonth").addEventListener("click",()=>moveCalendar(-1));$("#nextMonth").addEventListener("click",()=>moveCalendar(1));$("#todayButton").addEventListener("click",goToToday);$("#calendarTodayAction").addEventListener("click",goToToday);
   $("#monthViewButton").addEventListener("click",()=>{calendarMode="month";renderCalendar();});$("#weekViewButton").addEventListener("click",()=>{calendarMode="week";renderCalendar();});
   $("#calendarPanel").addEventListener("click",event=>{const button=event.target.closest("[data-calendar-date]");if(button){selectedCalendarDate=button.dataset.calendarDate;const date=parseLocalDate(selectedCalendarDate);shownMonth=new Date(date.getFullYear(),date.getMonth(),1);renderCalendar();}});
@@ -434,11 +485,13 @@ function bindEvents(){
 }
 function dailyCompletionCount(record){return record.morning.length+record.evening.length;}
 function toggleDaily(event){const input=event.target.closest("input[data-task]");if(!input)return;const record=dayProgress(),before=dailyCompletionCount(record),list=record[input.dataset.phase];if(input.checked&&!list.includes(input.dataset.task))list.push(input.dataset.task);if(!input.checked)record[input.dataset.phase]=list.filter(id=>id!==input.dataset.task);const after=dailyCompletionCount(record),total=DAILY.morning.length+DAILY.evening.length;save();renderDaily();renderCalendar();if(input.checked)showCompletionPopup(before,after,total);}
-function updateHomeTask(id,completed){const before=HOME_TASKS.filter(task=>state.home.completed[task.id]).length;state.home.completed[id]=completed;const after=HOME_TASKS.filter(task=>state.home.completed[task.id]).length;save();renderHome();renderDaily();renderCalendar();if(completed)showCompletionPopup(before,after,HOME_TASKS.length);}
-function markRecipeCooked(){const key=foodEntryKey(),wasCooked=Boolean(state.food.cooked[key]);if(wasCooked)delete state.food.cooked[key];else state.food.cooked[key]=todayKey();save();renderFood();renderDaily();renderCalendar();notify(wasCooked?"Cooked mark removed.":"Dinner: DONE ✓ Look at you, feeding people.",5000);}
+function toggleWeeklyCare(event){const input=event.target.closest("input[data-week-care]");if(!input)return;const record=dayProgress(),taskId=input.dataset.weekCare,completed=new Set(record.weeklyCare.completed);if(input.checked)completed.add(taskId);else completed.delete(taskId);record.weeklyCare.completed=[...completed];save();renderWeeklyCare();renderCalendar();if(input.checked)notify(taskId==="shower"?"Shower done. And remember, it was optional either way.":"Done. Lovely. Tomorrow stays tomorrow.");}
+function updateHomeTask(id,completed){const before=HOME_TASKS.filter(task=>state.home.completed[task.id]).length;state.home.completed[id]=completed;const task=HOME_TASKS[id-1];if(task){const record=dayProgress();record.home={title:task.title,zone:task.zone,duration:task.duration,completed:Boolean(completed)};}const after=HOME_TASKS.filter(task=>state.home.completed[task.id]).length;save();renderHome();renderDaily();renderCalendar();if(completed)showCompletionPopup(before,after,HOME_TASKS.length);}
+function markRecipeCooked(){const key=foodEntryKey(),wasCooked=Boolean(state.food.cooked[key]),recipe=getPlanMeals()[state.food.day];if(wasCooked)delete state.food.cooked[key];else state.food.cooked[key]=todayKey();const record=dayProgress();record.meal={planId:state.food.activeMenuPlanId,week:state.food.week,day:state.food.day,title:recipe?.title||"Dinner",cooked:!wasCooked};save();renderFood();renderDaily();renderCalendar();notify(wasCooked?"Cooked mark removed.":"Dinner: DONE ✓ Look at you, feeding people.",5000);}
 function openCookingMode(){const recipe=getPlanMeals()[state.food.day];$("#cookDialogTitle").textContent=recipe.title;$("#guidedMethod").innerHTML=recipeSteps(recipe).map(step=>`<li>${escapeHTML(step)}</li>`).join("");$("#cookDialog").showModal();startRecipeTimer(false);paintIcons();}
 function startRecipeTimer(reset){clearInterval(timerInterval);const recipe=getPlanMeals()[state.food.day];if(reset||!timerSeconds){const match=String(recipe.method||"").match(/(\d+)\s*[–-]\s*(\d+)\s*min|approximately\s*(\d+)\s*min|\b(\d+)\s*min/i);timerSeconds=match?Number(match[2]||match[3]||match[4]||match[1])*60:15*60;}timerPaused=false;$("#timerToggle").textContent="Pause";updateTimer();timerInterval=setInterval(()=>{if(!timerPaused&&timerSeconds>0){timerSeconds--;updateTimer();if(timerSeconds===0){clearInterval(timerInterval);notify("Timer complete.");}}},1000);}
 function updateTimer(){$("#timerDisplay").textContent=`${String(Math.floor(timerSeconds/60)).padStart(2,"0")}:${String(timerSeconds%60).padStart(2,"0")}`;}
-function renderAll(){renderDaily();renderHome();renderCalendar();renderFood();renderShopping();paintIcons();}
+function scheduleDailyRollover(){clearTimeout(dailyRolloverTimer);const now=new Date(),next=new Date(now.getFullYear(),now.getMonth(),now.getDate()+1,0,0,1);dailyRolloverTimer=setTimeout(()=>{renderDaily();renderCalendar();scheduleDailyRollover();},Math.max(1000,next-now));}
+function renderAll(){renderDaily();renderHome();renderCalendar();renderFood();renderShopping();paintIcons();scheduleDailyRollover();}
 bindEvents();renderAll();updateSyncStatus(syncSettings.spreadsheetId?"Reconnect Google to load and sync your data.":"Local saving is on. Connect Google to create your private spreadsheet.");maybeShowViewPopup(selectedView);
 if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(error=>console.warn("Could not enable offline support",error)));
