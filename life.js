@@ -8,8 +8,28 @@ const GOOGLE_SHEET_TITLE = "Little Life";
 const CATEGORIES = ["Fresh fruit and vegetables", "Meat, fish and eggs", "Dairy and chilled", "Bakery and wraps", "Dry goods, grains and pasta", "Tinned, jarred and sauces", "Frozen", "Herbs, spices and cooking basics", "Optional and substitutions", "From the freezer / already have"];
 const DAILY = {
   morning: [{id:"water",name:"Drink a glass of water",detail:"Your body has been running on vibes long enough."},{id:"teeth",name:"Brush your teeth",detail:"Come on. We both know you’re not negotiating this one."},{id:"moisturiser",name:"Moisturiser",detail:"Two minutes. Apply it now and thank yourself later."}],
-  evening: [{id:"floss",name:"Floss your teeth",detail:"Get in between the damn things. Your dentist is watching. Probably."},{id:"evening-teeth",name:"Brush your teeth",detail:"Yep. Again. Morning-you did not do enough to earn a free pass."},{id:"face-care",name:"Basic face care",detail:"Wash your face, moisturise, and call it a win."}]
+  evening: [{id:"floss",name:"Floss your teeth",detail:"Get in between the damn things. Your dentist is watching. Probably."},{id:"evening-teeth",name:"Brush your teeth",detail:"Yep. Again. Morning-you did not do enough to earn a free pass."},{id:"face-care",name:"Basic face care",detail:"Wash your face, moisturise, and call it a win."},{id:"minoxidil",name:"Evening minoxidil",detail:"Follow your topical minoxidil instructions, wash your hands, let the product dry fully, and keep it away from pets."}]
 };
+const DAILY_HOUSE_TASKS = [
+  ["dishwasher","Check dishwasher","Unload/load if needed. If it’s fine, tick and carry on."],
+  ["laundry","Check laundry","Any laundry plotting against you? A check is enough; no load required."],
+  ["dryer","Check dryer","Empty, fold, or put away if needed. Dryer only; no hanging laundry."],
+  ["rubbish","Check rubbish","Bins. They are not going to take themselves out, sadly."],
+  ["recycling","Check paper/cardboard recycling","A quick look is all this one asks."],
+  ["kitchen-reset","Quick kitchen reset","A little counter/hob reset. We’re not deep-cleaning."],
+  ["living-room-reset","Quick living-room reset","Put the room back into roughly human shape."],
+  ["put-away","Put things back where they belong","A tiny sweep for wandering stuff."]
+];
+const WEEKLY_HOUSE_TASKS = [
+  {id:"kitchen",title:"Kitchen",detail:"Kitchen cleaning/reset."},
+  {id:"bathroom",title:"Bathroom",detail:"Bathroom cleaning/reset."},
+  {id:"bedrooms",title:"Bedrooms",detail:"Bedroom and child’s bedroom cleaning/reset."},
+  {id:"living-areas",title:"Living areas",detail:"Living room and other main living areas."},
+  {id:"entrance-wc",title:"Entrance + WC",detail:"Hallway/entrance and WC."},
+  {id:"plants",title:"Water plants",detail:"A weekly drink for the plants."},
+  {id:"light-reset",title:"Light reset",detail:"A gentle reset/prep for the coming week."}
+];
+const WEEKLY_ROOM_TASKS = WEEKLY_HOUSE_TASKS.slice(0,5);
 const WEEKLY_CARE = [
   {morning:[{id:"hair-wash",name:"Hair wash",detail:"Clean-hair day. You’ve got this."},{id:"shower",name:"Shower",detail:"Optional. Skipping this is not a failed day.",optional:true}],evening:{id:"retinol",name:"Retinol night",detail:"Retinol night. Keep it simple and be kind to your skin."}},
   {morning:[{id:"shower",name:"Shower",detail:"Optional. Skipping this is not a failed day.",optional:true},{id:"body-care",name:"Body care",detail:"A little body care, at whatever level works today."}],evening:{id:"normal-skincare",name:"Normal skincare",detail:"Your usual gentle routine. Nothing extra required."}},
@@ -17,7 +37,7 @@ const WEEKLY_CARE = [
   {morning:[{id:"shower",name:"Shower",detail:"Optional. Skipping this is not a failed day.",optional:true},{id:"body-care",name:"Body care",detail:"Thursday’s planned body-care routine."}],evening:{id:"retinol",name:"Retinol night",detail:"Retinol night. Keep it simple and be kind to your skin."}},
   {morning:[{id:"hair-wash",name:"Hair wash",detail:"Clean-hair day. You’ve got this."},{id:"shower",name:"Shower",detail:"Optional. Skipping this is not a failed day.",optional:true}],evening:{id:"normal-skincare",name:"Normal skincare",detail:"Your usual gentle routine. Nothing extra required."}},
   {morning:[{id:"shower",name:"Shower",detail:"Optional. Skipping this is not a failed day.",optional:true},{id:"scrub-shaving",name:"Scrub / shaving",detail:"Saturday’s planned scrub or shaving routine."}],evening:{id:"mask",name:"Mask night",detail:"Mask night. Put your feet up while it does its thing."}},
-  {morning:[{id:"hair-wash",name:"Hair wash",detail:"Clean-hair day. You’ve got this."},{id:"shower",name:"Shower",detail:"Optional. Skipping this is not a failed day.",optional:true}],evening:{id:"sunday-skincare",name:"Normal skincare / collagen serum / whatever feels nice",detail:"Pick whatever feels kind to your skin tonight."}}
+  {morning:[{id:"hair-wash",name:"Hair wash",detail:"Clean-hair day. You’ve got this."},{id:"shower",name:"Shower",detail:"Optional. Skipping this is not a failed day.",optional:true},{id:"hair-progress-checkin",name:"Hair progress check-in",detail:"Take a progress photo in similar lighting, note any scalp irritation or changes, and reflect on consistency."}],evening:{id:"sunday-skincare",name:"Normal skincare / collagen serum / whatever feels nice",detail:"Pick whatever feels kind to your skin tonight."}}
 ];
 function plannedCareForDate(date){const parsed=parseLocalDate(date),weekday=(parsed.getDay()+6)%7,plan=WEEKLY_CARE[weekday];return {morning:plan.morning.map(task=>({...task})),evening:{...plan.evening},weekday};}
 const HOME_WEEKS = [
@@ -69,7 +89,7 @@ const todayKey = () => localKey(new Date());
 const parseLocalDate = key => { const [y,m,d] = key.split("-").map(Number); return new Date(y,m-1,d); };
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
-const blankState = () => ({version:1,progress:{},home:{startDate:"",completed:{}},food:{week:1,day:new Date().getDay()===0?6:new Date().getDay()-1,activeMenuPlanId:"original",menuPlans:[],cooked:{},favorites:[],notes:{},freezer:{}},shopping:{items:[]}});
+const blankState = () => ({version:1,progress:{},home:{startDate:"",completed:{},housekeepingWeeks:{}},food:{week:1,day:new Date().getDay()===0?6:new Date().getDay()-1,activeMenuPlanId:"original",menuPlans:[],cooked:{},favorites:[],notes:{},freezer:{}},shopping:{items:[]}});
 let state = loadState();
 let syncSettings = loadSyncSettings();
 let selectedView = "daily";
@@ -106,7 +126,7 @@ migrateLegacyHomeHistory();
 function loadState(){
   try {
     const saved = JSON.parse(localStorage.getItem(STORE_KEY));
-    if(saved&&saved.version===1){const defaults=blankState(),food={...defaults.food,...saved.food};food.menuPlans=Array.isArray(food.menuPlans)?food.menuPlans:[];food.cooked=Object.fromEntries(Object.entries(food.cooked||{}).map(([key,value])=>[migrateFoodKey(key),value]));food.favorites=(food.favorites||[]).map(migrateFoodKey);food.notes=Object.fromEntries(Object.entries(food.notes||{}).map(([key,value])=>[migrateFoodKey(key),value]));if(food.activeMenuPlanId!=="original"&&!food.menuPlans.some(plan=>plan.id===food.activeMenuPlanId))food.activeMenuPlanId="original";const shopping={...defaults.shopping,...saved.shopping};shopping.items=(shopping.items||[]).map(item=>({...item,planId:item.planId||"original"}));return {...defaults,...saved,progress:saved.progress||{},home:{...defaults.home,...saved.home},food,shopping};}
+    if(saved&&saved.version===1){const defaults=blankState(),food={...defaults.food,...saved.food};food.menuPlans=Array.isArray(food.menuPlans)?food.menuPlans:[];food.cooked=Object.fromEntries(Object.entries(food.cooked||{}).map(([key,value])=>[migrateFoodKey(key),value]));food.favorites=(food.favorites||[]).map(migrateFoodKey);food.notes=Object.fromEntries(Object.entries(food.notes||{}).map(([key,value])=>[migrateFoodKey(key),value]));if(food.activeMenuPlanId!=="original"&&!food.menuPlans.some(plan=>plan.id===food.activeMenuPlanId))food.activeMenuPlanId="original";const shopping={...defaults.shopping,...saved.shopping};shopping.items=(shopping.items||[]).map(item=>({...item,planId:item.planId||"original"}));return {...defaults,...saved,progress:saved.progress||{},home:{...defaults.home,...saved.home,housekeepingWeeks:saved.home?.housekeepingWeeks||{}},food,shopping};}
   } catch(error){console.warn("Could not load Little Life data",error);}
   const fresh=blankState();
   try {
@@ -226,6 +246,7 @@ function dayProgress(date=todayKey()){
   let changed=false;
   if(!state.progress[date]){state.progress[date]={morning:[],evening:[]};changed=true;}
   const record=state.progress[date];
+  if(!Array.isArray(record.houseDaily)){record.houseDaily=[];changed=true;}
   if(Array.isArray(record.evening)&&record.evening.includes("skincare")){record.evening=record.evening.map(id=>id==="skincare"?"face-care":id);changed=true;}
   for(const phase of ["morning","evening"]){const validTasks=new Set(DAILY[phase].map(task=>task.id)),wasArray=Array.isArray(record[phase]),old=wasArray?record[phase]:[],clean=old.filter(id=>validTasks.has(id));if(!wasArray||clean.length!==old.length){record[phase]=clean;changed=true;}}
   if(!record.weeklyCare){const plan=plannedCareForDate(date);record.weeklyCare={weekday:plan.weekday,morning:plan.morning.map(({id,name,detail,optional})=>({id,name,detail,optional:Boolean(optional)})),evening:{...plan.evening},completed:[]};changed=true;}
@@ -234,6 +255,37 @@ function dayProgress(date=todayKey()){
   if(!record.home&&state.home.startDate){const cycleDay=Math.floor((parseLocalDate(date)-parseLocalDate(state.home.startDate))/86400000)+1,task=HOME_TASKS[cycleDay-1];if(task) {record.home={title:task.title,zone:task.zone,duration:task.duration,completed:Boolean(state.home.completed[cycleDay])};changed=true;}}
   if(changed)save();
   return record;
+}
+function houseWeekKey(date=todayKey()){return localKey(weekStartFor(date));}
+function getHouseWeekRecord(key=houseWeekKey()){
+  state.home.housekeepingWeeks=state.home.housekeepingWeeks||{};
+  if(!state.home.housekeepingWeeks[key])state.home.housekeepingWeeks[key]={completed:{},extraJobName:"Wipe a door"};
+  const record=state.home.housekeepingWeeks[key];record.completed=record.completed||{};record.extraJobName=record.extraJobName||"Wipe a door";return record;
+}
+function weeklyHouseTaskForDay(day){return day===5?null:day===6?WEEKLY_HOUSE_TASKS[6]:WEEKLY_HOUSE_TASKS[day];}
+function houseTaskRow(task,checked,attributes=""){return `<label class="house-task-row ${checked?"is-done":""}"><input type="checkbox" ${checked?"checked":""} ${attributes}><span><strong>${escapeHTML(task.title||task[1])}</strong><small>${escapeHTML(task.detail||task[2])}</small></span></label>`;}
+function renderHousekeeping(){
+  const date=todayKey(),record=dayProgress(date),today=parseLocalDate(date),weekday=(today.getDay()+6)%7,weekKey=houseWeekKey(date),weekRecord=getHouseWeekRecord(weekKey);
+  const doneDaily=new Set(record.houseDaily);
+  $("#dailyHouseCount").textContent=`${doneDaily.size} / ${DAILY_HOUSE_TASKS.length}`;
+  $("#dailyHouseTasks").innerHTML=DAILY_HOUSE_TASKS.map(([id,title,detail])=>houseTaskRow({title,detail},doneDaily.has(id),`data-house-daily="${id}"`)).join("");
+  const weeklyTask=weeklyHouseTaskForDay(weekday),weeklyHost=$("#houseWeeklyTasks");
+  $("#houseWeeklyTitle").textContent=weekday===5?"Saturday · plants + catch-up":`${weekdayName(weekday)} · ${weeklyTask.title}`;
+  $("#houseWeeklyLabel").textContent=`Week of ${weekStartFor(date).toLocaleDateString(undefined,{month:"short",day:"numeric"})}`;
+  if(weeklyTask){weeklyHost.innerHTML=houseTaskRow(weeklyTask,Boolean(weekRecord.completed[weeklyTask.id]),`data-house-week-task="${weeklyTask.id}"`);$("#houseWeeklyNote").textContent=weekday===6?"A soft reset for the week ahead. No need to overdo it.":weeklyTask.detail;}
+  else{weeklyHost.innerHTML='<p class="muted-copy">No room reset on Saturdays. Pick up only what still matters below.</p>';$("#houseWeeklyNote").textContent="Weekly room tasks belong to this week only; nothing rolls into next week.";}
+  const catchupSection=$("#houseCatchupSection"),weeklySection=$("#houseWeeklySection"),isSaturday=weekday===5;
+  catchupSection.hidden=!isSaturday;weeklySection.hidden=!isSaturday;
+  if(isSaturday){
+    const unfinished=WEEKLY_ROOM_TASKS.filter(task=>task.id!=="light-reset"&&!weekRecord.completed[task.id]);
+    $("#houseCatchupTasks").innerHTML=unfinished.map(task=>houseTaskRow(task,false,`data-house-week-task="${task.id}"`)).join("");
+    $("#houseCatchupEmpty").hidden=unfinished.length>0;
+    const plant=WEEKLY_HOUSE_TASKS.find(task=>task.id==="plants");
+    $("#houseWeeklyExtras").innerHTML=houseTaskRow(plant,Boolean(weekRecord.completed.plants),`data-house-week-task="plants"`);
+    $("#houseExtraJobChoice").value=weekRecord.extraJobName;
+    $("#houseExtraJobTask").innerHTML=`<input type="checkbox" data-house-week-task="small-extra" ${weekRecord.completed["small-extra"]?"checked":""}><span><strong>✨ ${escapeHTML(weekRecord.extraJobName)}</strong><small>Optional. Only if it feels doable.</small></span>`;
+    $("#houseExtraJobTask").classList.toggle("is-done",Boolean(weekRecord.completed["small-extra"]));
+  }
 }
 function renderWeeklyCare(){
   const record=dayProgress(),plan=record.weeklyCare;
@@ -277,6 +329,7 @@ const HOME_WEEK_COPY = {
   4:["The final stretch.","Tie your hair up. Put on something loud.","Let's get this house feeling like <strong>your house</strong> again."]
 };
 function renderHome(){
+  renderHousekeeping();
   const cycleDay=getCycleDay(),completed=Object.values(state.home.completed).filter(Boolean).length;
   $("#cycleProgressText").textContent=`${completed} / 30`;
   $("#cycleProgress").style.width=`${Math.min(completed/30*100,100)}%`;
@@ -299,7 +352,8 @@ function renderHome(){
 function weekdayName(day){return ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"][day];}
 function foodCookedForDate(date){return Object.entries(state.food.cooked).filter(([,cookedDate])=>cookedDate===date).map(([key])=>{const parts=key.split(":");const planId=parts.length===3?parts[0]:"original",week=parts.length===3?Number(parts[1]):Number(key.split("-")[0]),day=parts.length===3?Number(parts[2]):Number(key.split("-")[1]);return getPlanMeals(planId,week)[day]?.title;}).filter(Boolean);}
 function homeDoneOn(date){const historical=state.progress[date]?.home;if(historical?.completed&&historical.title)return historical;const cycle=state.home.startDate?Math.floor((parseLocalDate(date)-parseLocalDate(state.home.startDate))/86400000)+1:0;return cycle>0&&HOME_TASKS[cycle-1]&&state.home.completed[cycle]?HOME_TASKS[cycle-1]:null;}
-function calendarActivity(date){const record=state.progress[date]||{},validTasks=new Set(Object.values(DAILY).flat().map(task=>task.id)),careCount=[...(record.morning||[]),...(record.evening||[])].filter(id=>validTasks.has(id)||id==="skincare").length,weeklyCareCount=(record.weeklyCare?.completed||[]).length,homeTask=homeDoneOn(date),homeStatus=record.home?.title?record.home:homeTask,dinners=foodCookedForDate(date);return {careCount,weeklyCareCount,homeTask,homeStatus,dinners,wins:careCount+weeklyCareCount+(homeTask?1:0)+dinners.length};}
+function weeklyHouseCompletionsOn(date){return Object.entries(state.home.housekeepingWeeks||{}).flatMap(([weekStart,record])=>Object.entries(record.completed||{}).filter(([,completedDate])=>completedDate===date).map(([taskId])=>({weekStart,taskId,title:taskId==="small-extra"?record.extraJobName:WEEKLY_HOUSE_TASKS.find(task=>task.id===taskId)?.title||taskId})));}
+function calendarActivity(date){const record=state.progress[date]||{},validTasks=new Set(Object.values(DAILY).flat().map(task=>task.id)),careCount=[...(record.morning||[]),...(record.evening||[])].filter(id=>validTasks.has(id)||id==="skincare").length,weeklyCareCount=(record.weeklyCare?.completed||[]).length,houseDailyCount=(record.houseDaily||[]).length,houseWeekly=weeklyHouseCompletionsOn(date),homeTask=homeDoneOn(date),homeStatus=record.home?.title?record.home:homeTask,dinners=foodCookedForDate(date);return {careCount,weeklyCareCount,houseDailyCount,houseWeekly,homeTask,homeStatus,dinners,wins:careCount+weeklyCareCount+houseDailyCount+houseWeekly.length+(homeTask?1:0)+dinners.length};}
 function weekStartFor(date){const start=parseLocalDate(date);start.setDate(start.getDate()-((start.getDay()+6)%7));return start;}
 function weekLabel(date){const start=weekStartFor(date),end=new Date(start);end.setDate(end.getDate()+6);return `${start.toLocaleDateString(undefined,{month:"short",day:"numeric"})} – ${end.toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"})}`;}
 function renderCalendar(){
@@ -311,13 +365,13 @@ function renderCalendar(){
   const first=new Date(year,month,1),start=new Date(year,month,1-((first.getDay()+6)%7));let monthMarkup="";
   for(let index=0;index<42;index++){
     const date=new Date(start);date.setDate(start.getDate()+index);const key=localKey(date),activity=calendarActivity(key);
-    monthMarkup+=`<button type="button" role="gridcell" class="calendar-day ${date.getMonth()!==month?"outside":""} ${key===selectedCalendarDate?"selected":""} ${key===todayKey()?"today":""}" data-calendar-date="${key}" aria-label="${date.toLocaleDateString(undefined,{dateStyle:"full"})}${activity.careCount?`, care ${activity.careCount} of ${Object.values(DAILY).flat().length}`:""}${activity.weeklyCareCount?`, weekly care ${activity.weeklyCareCount} done`:""}${activity.homeTask?`, home ${activity.homeTask.zone}`:""}${activity.dinners.length?`, dinner ${activity.dinners.join(", ")}`:""}"><span class="calendar-date">${date.getDate()}</span><span class="calendar-markers">${activity.careCount||activity.weeklyCareCount?'<i class="progress-dot"></i>':''}${activity.homeTask?'<i class="home-dot"></i>':''}${activity.dinners.length?'<i class="food-dot"></i>':''}</span></button>`;
+    monthMarkup+=`<button type="button" role="gridcell" class="calendar-day ${date.getMonth()!==month?"outside":""} ${key===selectedCalendarDate?"selected":""} ${key===todayKey()?"today":""}" data-calendar-date="${key}" aria-label="${date.toLocaleDateString(undefined,{dateStyle:"full"})}${activity.careCount?`, care ${activity.careCount} of ${Object.values(DAILY).flat().length}`:""}${activity.houseDailyCount?`, daily house checks ${activity.houseDailyCount}`:""}${activity.houseWeekly.length?`, weekly house tasks ${activity.houseWeekly.length}`:""}${activity.weeklyCareCount?`, weekly care ${activity.weeklyCareCount} done`:""}${activity.homeTask?`, home ${activity.homeTask.zone}`:""}${activity.dinners.length?`, dinner ${activity.dinners.join(", ")}`:""}"><span class="calendar-date">${date.getDate()}</span><span class="calendar-markers">${activity.careCount||activity.weeklyCareCount||activity.houseDailyCount||activity.houseWeekly.length?'<i class="progress-dot"></i>':''}${activity.homeTask||activity.houseWeekly.length?'<i class="home-dot"></i>':''}${activity.dinners.length?'<i class="food-dot"></i>':''}</span></button>`;
   }
   $("#calendarGrid").innerHTML=monthMarkup;
   const weekStart=weekStartFor(selectedCalendarDate);let weekMarkup="";
   for(let index=0;index<7;index++){
     const date=new Date(weekStart);date.setDate(weekStart.getDate()+index);const key=localKey(date),activity=calendarActivity(key);
-    weekMarkup+=`<button type="button" class="week-day ${key===selectedCalendarDate?"selected":""} ${key===todayKey()?"today":""}" data-calendar-date="${key}" aria-label="${date.toLocaleDateString(undefined,{dateStyle:"full"})}, ${activity.wins} little ${activity.wins===1?"win":"wins"}"><span class="week-day-name">${date.toLocaleDateString(undefined,{weekday:"short"})}</span><strong class="week-day-number">${date.getDate()}</strong><span class="week-day-markers" aria-hidden="true">${activity.careCount||activity.weeklyCareCount?'<i class="progress-dot"></i>':''}${activity.homeTask?'<i class="home-dot"></i>':''}${activity.dinners.length?'<i class="food-dot"></i>':''}</span><span class="week-day-wins">${activity.wins?`${activity.wins} ${activity.wins===1?"win":"wins"}`:"—"}</span></button>`;
+    weekMarkup+=`<button type="button" class="week-day ${key===selectedCalendarDate?"selected":""} ${key===todayKey()?"today":""}" data-calendar-date="${key}" aria-label="${date.toLocaleDateString(undefined,{dateStyle:"full"})}, ${activity.wins} little ${activity.wins===1?"win":"wins"}"><span class="week-day-name">${date.toLocaleDateString(undefined,{weekday:"short"})}</span><strong class="week-day-number">${date.getDate()}</strong><span class="week-day-markers" aria-hidden="true">${activity.careCount||activity.weeklyCareCount||activity.houseDailyCount||activity.houseWeekly.length?'<i class="progress-dot"></i>':''}${activity.homeTask||activity.houseWeekly.length?'<i class="home-dot"></i>':''}${activity.dinners.length?'<i class="food-dot"></i>':''}</span><span class="week-day-wins">${activity.wins?`${activity.wins} ${activity.wins===1?"win":"wins"}`:"—"}</span></button>`;
   }
   $("#calendarWeekStrip").innerHTML=weekMarkup;renderCalendarDetail();renderMonthReflection();
 }
@@ -326,6 +380,8 @@ function renderCalendarDetail(){
   $("#detailDayNumber").textContent=String(parsed.getDate());$("#detailDate").textContent=parsed.toLocaleDateString(undefined,{weekday:"long",month:"long",day:"numeric"});$("#detailKicker").textContent=date===todayKey()?"Today":"Selected day";
   const events=[];
   {const completedEssentials=Object.values(DAILY).flat().filter(task=>(record?.morning||[]).includes(task.id)||(record?.evening||[]).includes(task.id)||(task.id==="face-care"&&(record?.evening||[]).includes("skincare")));events.push(`<div class="calendar-event"><span class="calendar-event-icon" aria-hidden="true">💧</span><div><strong>Daily essentials · ${activity.careCount}/${careTotal}</strong>${completedEssentials.length?`<ul>${completedEssentials.map(task=>`<li>${escapeHTML(task.name)} · done</li>`).join("")}</ul>`:""}</div></div>`);}
+  if(record?.houseDaily){const done=new Set(record.houseDaily);events.push(`<div class="calendar-event"><span class="calendar-event-icon" aria-hidden="true">🏠</span><div><strong>Daily House Check · ${done.size}/${DAILY_HOUSE_TASKS.length}</strong><ul>${DAILY_HOUSE_TASKS.map(([id,title])=>`<li>${escapeHTML(title)} · ${done.has(id)?"done":"not checked"}</li>`).join("")}</ul></div></div>`);}
+  if(activity.houseWeekly.length)events.push(`<div class="calendar-event"><span class="calendar-event-icon" aria-hidden="true">🧹</span><div><strong>This week</strong><ul>${activity.houseWeekly.map(task=>`<li>${escapeHTML(task.title)} · done</li>`).join("")}</ul></div></div>`);
   const weeklyRows=weeklyPlan.morning.map(task=>{const done=(weeklyPlan.completed||[]).includes(task.id),status=done?"Done":task.optional?"Optional · not done":"Planned · not marked done";return `<li><strong>${escapeHTML(task.name)}</strong> <span>${status}</span></li>`;});
   const eveningDone=(weeklyPlan.completed||[]).includes(weeklyPlan.evening.id);
   weeklyRows.push(`<li><strong>Tonight: ${escapeHTML(weeklyPlan.evening.name)}</strong> <span>${eveningDone?"Done":"Planned · not marked done"}</span></li>`);
@@ -462,6 +518,9 @@ function bindEvents(){
   $("#morningTasks").addEventListener("change",event=>toggleDaily(event));$("#eveningTasks").addEventListener("change",event=>toggleDaily(event));
   $("#startCycle").addEventListener("click",()=>{state.home.startDate=todayKey();state.home.completed={};save();renderHome();renderDaily();renderCalendar();showPopup("homeReset");});
   $("#homePlan").addEventListener("change",event=>{const id=Number(event.target.dataset.homeTask);if(id)updateHomeTask(id,event.target.checked);});
+  $("#dailyHouseTasks").addEventListener("change",toggleDailyHouseTask);
+  ["#houseWeeklyTasks","#houseCatchupTasks","#houseWeeklyExtras","#houseExtraJobTask"].forEach(selector=>$(selector).addEventListener("change",toggleWeeklyHouseTask));
+  $("#houseExtraJobChoice").addEventListener("change",event=>{const week=getHouseWeekRecord();week.extraJobName=event.target.value;if(week.completed["small-extra"])recordWeeklyHouseCompletion("small-extra",true,week.extraJobName);save();renderHousekeeping();});
   ["#weeklyMorningTasks","#weeklyEveningTask"].forEach(selector=>$(selector).addEventListener("change",toggleWeeklyCare));
   $("#previousMonth").addEventListener("click",()=>moveCalendar(-1));$("#nextMonth").addEventListener("click",()=>moveCalendar(1));$("#todayButton").addEventListener("click",goToToday);$("#calendarTodayAction").addEventListener("click",goToToday);
   $("#monthViewButton").addEventListener("click",()=>{calendarMode="month";renderCalendar();});$("#weekViewButton").addEventListener("click",()=>{calendarMode="week";renderCalendar();});
@@ -475,6 +534,9 @@ function bindEvents(){
   CATEGORIES.forEach(category=>$("#shoppingCategory").add(new Option(category,category)));$("#shoppingSearch").addEventListener("input",event=>{shoppingSearch=event.target.value.trim().toLowerCase();renderShopping();});$("#remainingOnly").addEventListener("click",event=>{remainingOnly=!remainingOnly;event.currentTarget.setAttribute("aria-pressed",String(remainingOnly));renderShopping();});$("#clearChecked").addEventListener("click",()=>{const before=state.shopping.items.length,planId=state.food.activeMenuPlanId;state.shopping.items=state.shopping.items.filter(item=>item.planId!==planId||item.week!==`Week ${state.food.week}`||!item.checked);save();renderShopping();notify(before===state.shopping.items.length?"No checked items to clear.":"Checked items cleared.");});$("#addShoppingItem").addEventListener("submit",event=>{event.preventDefault();const name=$("#shoppingName").value.trim();if(!name)return;state.shopping.items.push({id:uid(),planId:state.food.activeMenuPlanId,week:`Week ${state.food.week}`,name,quantity:$("#shoppingQuantity").value.trim(),category:$("#shoppingCategory").value,note:"",source:"Manual",manual:true,checked:false,pantry:false});save();event.currentTarget.reset();renderShopping();notify(`${name} added to the list.`);});
 }
 function dailyCompletionCount(record){return record.morning.length+record.evening.length;}
+function toggleDailyHouseTask(event){const input=event.target.closest("input[data-house-daily]");if(!input)return;const record=dayProgress(),id=input.dataset.houseDaily,items=new Set(record.houseDaily||[]);if(input.checked)items.add(id);else items.delete(id);record.houseDaily=[...items];save();renderHousekeeping();renderCalendar();}
+function recordWeeklyHouseCompletion(taskId,checked,titleOverride){const weekKey=houseWeekKey(),week=getHouseWeekRecord(weekKey),date=todayKey();if(checked)week.completed[taskId]=date;else delete week.completed[taskId];const day=dayProgress(date);day.homeWeekly=Array.isArray(day.homeWeekly)?day.homeWeekly:[];day.homeWeekly=day.homeWeekly.filter(item=>item.weekStart!==weekKey||item.taskId!==taskId);if(checked){const task=WEEKLY_HOUSE_TASKS.find(item=>item.id===taskId);day.homeWeekly.push({weekStart:weekKey,taskId,title:titleOverride||task?.title||taskId});}}
+function toggleWeeklyHouseTask(event){const input=event.target.closest("input[data-house-week-task]");if(!input)return;const taskId=input.dataset.houseWeekTask,title=taskId==="small-extra"?getHouseWeekRecord().extraJobName:WEEKLY_HOUSE_TASKS.find(task=>task.id===taskId)?.title;recordWeeklyHouseCompletion(taskId,input.checked,title);save();renderHousekeeping();renderCalendar();if(input.checked)notify("Done. Lovely. Anything left can wait for another week.");}
 function toggleDaily(event){const input=event.target.closest("input[data-task]");if(!input)return;const record=dayProgress(),before=dailyCompletionCount(record),list=record[input.dataset.phase];if(input.checked&&!list.includes(input.dataset.task))list.push(input.dataset.task);if(!input.checked)record[input.dataset.phase]=list.filter(id=>id!==input.dataset.task);const after=dailyCompletionCount(record),total=DAILY.morning.length+DAILY.evening.length;save();renderDaily();renderCalendar();if(input.checked)showCompletionPopup(before,after,total);}
 function toggleWeeklyCare(event){const input=event.target.closest("input[data-week-care]");if(!input)return;const record=dayProgress(),taskId=input.dataset.weekCare,completed=new Set(record.weeklyCare.completed);if(input.checked)completed.add(taskId);else completed.delete(taskId);record.weeklyCare.completed=[...completed];save();renderWeeklyCare();renderCalendar();if(input.checked)notify(taskId==="shower"?"Shower done. And remember, it was optional either way.":"Done. Lovely. Tomorrow stays tomorrow.");}
 function updateHomeTask(id,completed){const before=HOME_TASKS.filter(task=>state.home.completed[task.id]).length;state.home.completed[id]=completed;const task=HOME_TASKS[id-1];if(task){const record=dayProgress();record.home={title:task.title,zone:task.zone,duration:task.duration,completed:Boolean(completed)};}const after=HOME_TASKS.filter(task=>state.home.completed[task.id]).length;save();renderHome();renderDaily();renderCalendar();if(completed)showCompletionPopup(before,after,HOME_TASKS.length);}
